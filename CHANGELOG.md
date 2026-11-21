@@ -21,6 +21,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 - A tall slide that doesn't fit pages on into a follow-on scene with its heading;
   `flipcard lint` warns about a tall slide with more than 12 words (`flipkit::crowded`).
 - `tests/golden/phone.jsonl`: every state of the phone film.
+- Tall and square films set headings and metric values in Inter Display Black (SIL OFL 1.1,
+  built in as a Latin subset), tracked -0.02em; wide keeps the theme's `display`.
 
 ### Changed
 

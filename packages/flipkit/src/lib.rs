@@ -502,10 +502,9 @@ impl Pool {
         let workers = std::thread::available_parallelism()
             .map_or(1, usize::from)
             .min(WORKERS);
-        let mut engines = vec![deckmark::faces::engine(faces)?];
-        for _ in 1..workers {
-            engines.push(Arc::new(engine(faces)?));
-        }
+        let engines = (0..workers)
+            .map(|_| engine(faces).map(Arc::new))
+            .collect::<Result<_>>()?;
         let threads = rayon::ThreadPoolBuilder::new()
             .num_threads(workers)
             .build()?;
@@ -533,12 +532,14 @@ impl Pool {
     }
 }
 
-/// A new engine with the deck's fonts, loaded as `deckmark::faces::engine` loads them: a file as
-/// it is, a folder by its font files in name order.
+/// A new engine with Inter Display Black (tall and square headings) and the deck's fonts, loaded
+/// as `deckmark::faces::engine` loads them: a file as it is, a folder by its font files in name
+/// order.
 fn engine(faces: &[PathBuf]) -> Result<Engine> {
     let is_font =
         |path: &Path| deckmark::deck::extension_is(&path.to_string_lossy(), &["otf", "ttf", "ttc"]);
-    let mut builder = Engine::builder();
+    let mut builder =
+        Engine::builder().font(include_bytes!("../fonts/InterDisplay-Black.otf").to_vec());
     for face in faces {
         let mut files = vec![face.clone()];
         if face.is_dir() {
@@ -581,7 +582,7 @@ pub fn crowded(loaded: &Loaded, options: &Options) -> Vec<(usize, String, usize)
 /// Lay out every slide fully built (a tall one paged on) and report the ones that overflow;
 /// what `flipcard lint` runs.
 pub fn check(loaded: &Loaded, options: &Options) -> Result<Vec<Overflow>> {
-    let engine = deckmark::faces::engine(&loaded.deck.faces)?;
+    let engine = engine(&loaded.deck.faces)?;
     Ok(Maker::new(loaded, options)?.paged(&engine)?.1)
 }
 

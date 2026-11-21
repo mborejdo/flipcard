@@ -148,3 +148,5 @@ Text in the theme's `sans`, headings in `display` (its heaviest weight, so a Bla
 there if you bring one), code and footer in `mono` (`[theme.fonts]` in flipcard.toml). Inter and
 Fira Code are built in; other families come from the font files the config names
 (`fonts = ["fonts"]`).
+Tall and square films set headings and metric values in Inter Display Black (SIL OFL 1.1,
+built in), whatever the `display`.
