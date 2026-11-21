@@ -1,12 +1,12 @@
-# The film: a deck as GIF, MP4, DOCX and PDF
+# The film: a deck as GIF and MP4
 
 Design note, 06.11.2026, built the same day as `presiterm film`. Since 21.11.2026 the film is
 flipcard: `flipkit` the film (on `deckmark`, presiterm's deck model as a package), `flipcard` the
-command line. Names below are as written then.
+command line. Names below are as written then. The Word and PDF editions of the first version
+are gone: flipcard writes the GIF and the MP4, other tools embed them.
 
 The film renders a deck to files that play on their own: a looping GIF for a README or a chat,
-an MP4 for a post, a Word file for a mail, a PDF that starts the film when it opens in Acrobat.
-Every key press of the talk is a build-in.
+an MP4 for a post. Every key press of the talk is a build-in.
 
 ## Why in presiterm
 
@@ -38,14 +38,9 @@ Frames in, files out; knows nothing about Markdown or Typst.
   Keeps a 14-card film near 1 MB.
 - `video::encode(frames, fps)` (feature `mp4`): H.264 via `rusty_h264-encoder`, boxed by `mp4`,
   no B-frames.
-- `docx::wrap(poster, gif, links)`: A4 landscape, the GIF as only picture, links under it
-  (docx-rs, then a zip pass swaps the PNG part for the GIF). Word plays the GIF in place.
-- `pdf::embed(page, mp4, name)`: a Screen annotation with a Rendition action over the poster,
-  fired on page open (lopdf). Acrobat plays and loops, other viewers show the poster.
 
-Features `gif` (default), `mp4`, `docx`, `pdf`, each pulls only its encoder. Tests per
-container (GIF frames and delays, MP4 sample table, DOCX parts and relationships, PDF
-annotation), read back with the crate's own readers or a few lines of box parsing.
+Features `gif` (default) and `mp4`, each pulls only its encoder. Tests per container (GIF frames
+and delays, MP4 sample table), read back with the crate's own readers.
 
 ### `typstkit::Engine::raster`
 
@@ -56,7 +51,7 @@ engine's root, as for diagrams.
 ### `presiterm film` (feature `film`, needs `typst`)
 
     presiterm film talk/slides.md                 talk/slides.gif
-    presiterm film talk/slides.md --mp4 --docx --pdf
+    presiterm film talk/slides.md --mp4
     presiterm film talk/slides.md --cards out/    every card and build-in sample as PNG
     presiterm film talk/slides.md --preview       play the GIF inline in this WezTerm
 
@@ -89,8 +84,8 @@ text). Only `metrics` was built.
 
 ## What was built
 
-All of the above, plus `Input::Bytes`, the card layout (`apps/presiterm/src/film/film.typ`) and
-the PDF page, `--out` and the eight timing flags, `links:`, `presiterm handbook film`, `metrics`
+All of the above, plus `Input::Bytes`, the card layout (`apps/presiterm/src/film/film.typ`),
+`--out` and the eight timing flags, `presiterm handbook film`, `metrics`
 in dialect, window and film, and `examples/film`, rendered by `cargo xtask demo`.
 
 Left out on purpose: `columns` (a picture above its text does the job), per-element timing in

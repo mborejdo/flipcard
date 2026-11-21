@@ -4,11 +4,7 @@ Frames in, films out. A list of RGB frames, whatever drew them, becomes:
 
 - an animated GIF: one palette learned from the stills, delta frames (only the changed rectangle,
   unchanged pixels transparent), so a film of text cards stays small;
-- an MP4, H.264 in pure Rust (`rusty_h264-encoder`, `mp4`), feature `mp4`;
-- an A4 Word file (portrait for a tall film) with only the GIF and a line of links (Word plays the GIF in place),
-  feature `docx`;
-- a Screen annotation on a PDF page that plays the MP4 when it opens in Acrobat (other viewers
-  show the page as is), feature `pdf`.
+- an MP4, H.264 in pure Rust (`rusty_h264-encoder`, `mp4`), feature `mp4`.
 
 `gif::Writer` and `video::Writer` take the frames one by one (a frame and how often it repeats),
 so a long film is never all in memory; the H.264 level follows the frame size and rate. `Frame::downscale` makes a GIF preview

@@ -1,6 +1,5 @@
-//! Frames in, films out: RGB frames become an animated GIF ([`gif`]), an MP4 ([`video`]), a Word
-//! file that plays the GIF ([`docx`]) or a PDF page that plays the MP4 ([`pdf`]). Pure Rust,
-//! nothing started.
+//! Frames in, films out: RGB frames become an animated GIF ([`gif`]) or an MP4 ([`video`]). Pure
+//! Rust, nothing started.
 //!
 //! [`shots`] plans the frames of a film from scenes: every scene's build-in frames, a hold on its
 //! last frame, a [`Transition`] into the next scene. [`sequence`] draws that plan.
@@ -14,12 +13,8 @@
     reason = "pixel and timing math on small frames"
 )]
 
-#[cfg(feature = "docx")]
-pub mod docx;
 #[cfg(feature = "gif")]
 pub mod gif;
-#[cfg(feature = "pdf")]
-pub mod pdf;
 #[cfg(feature = "mp4")]
 pub mod video;
 

@@ -32,7 +32,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
   MP4.
 - The H.264 level follows the macroblocks per frame and second (3.0 for 640x360, 4.0 for
   1080x1920 at 30 fps).
-- The Word and PDF pages of a tall film are A4 portrait.
 - Tall defaults to `rise` and big centred text (on the 360 pt canvas: heading 40, text 26, metric
   64 with its label at 18, footer 12; metrics one per row); wide stays `flip`. `hold` is a floor, unset by default (7 s for `flip`).
 - `gif::Writer::push` and `video::Writer::push` take how often the frame repeats; `shots` takes
@@ -40,7 +39,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
   whose state didn't change is not drawn again.
 - The phone example shows every preset, a marker, a pause, metrics and a slide that pages on.
 
-The wide example is the same bytes as before.
+### Removed
+
+- The Word file and the PDF: `--docx`, `--pdf`, `Rendered::docx`, `Rendered::pdf`,
+  `Rendered::poster`, `strip_scheme`, filmstrip's `docx` and `pdf` features (docx-rs, zip,
+  lopdf, typst-pdf). flipcard writes GIF and MP4; other tools embed them. Frontmatter `links:`
+  is no longer shown anywhere.
+
+The wide example's GIF, MP4 and cards are the same bytes as before.
 
 ## 0.1.0 - unreleased
 

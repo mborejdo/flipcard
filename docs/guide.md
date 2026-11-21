@@ -1,8 +1,8 @@
-# flipcard: a deck as GIF, MP4, DOCX and PDF
+# flipcard: a deck as GIF and MP4
 
 ```sh
 flipcard talk/slides.md                      # talk/slides.gif
-flipcard talk/slides.md --mp4 --docx --pdf   # the MP4, a Word file, a PDF
+flipcard talk/slides.md --gif --mp4         # the GIF and the MP4
 flipcard talk/slides.md --out dist           # into dist/ instead of next to the deck
 flipcard talk/slides.md --cards dist/cards   # every card, fully built, as PNG
 flipcard talk/slides.md --format tall        # 9:16 for a phone, words rise in
@@ -76,10 +76,6 @@ paragraph line. Only when not even that fits is it an overflow.
 * `slides.gif`: one learned palette, only changed pixels stored (14 cards at 640 px: about
   1 MB). Loops.
 * `slides.mp4` (`--mp4`): H.264, pure Rust, same frames.
-* `slides.docx` (`--docx`): A4 landscape (portrait for tall), the GIF and a line of links. Word for Mac and current
-  Word for Windows play the GIF in place.
-* `slides.pdf` (`--pdf`): A4 landscape (portrait for tall), the first card as poster, title line and links. Acrobat
-  plays and loops the MP4 over it on open; other viewers show the poster.
 * `--cards DIR`: every scene's fully built card as `card03-007.png` (slide 3, scene 7).
 
 ## Timing and size
@@ -120,7 +116,6 @@ barn doors, `cut` has no frames between. One transition per film; `fade` sets it
 ```markdown
 ---
 title: My talk
-links: https://example.org/talk, mailto:me@example.org
 hold: 5
 enter: 1.2
 ---
@@ -131,9 +126,6 @@ enter: 1.2
 width = 960
 fps = 12
 ```
-
-`links:` are comma-separated URLs, shown under the picture in the Word and PDF editions with the
-scheme (`https://`, `mailto:`) stripped from the label.
 
 ## Fitting
 

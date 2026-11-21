@@ -1,6 +1,5 @@
 # flipcard: a Markdown script in, a flip-card film out. Every slide is a card drawn by Typst; the
-# cards go out as an animated GIF, an MP4, a Word file that plays the GIF and a PDF that plays the
-# MP4.
+# cards go out as an animated GIF and an MP4.
 [workspace]
 resolver = "3"
 members = ["apps/flipcard", "packages/filmstrip", "packages/flipkit"]
@@ -37,7 +36,7 @@ typstkit = { git = "https://github.com/mborejdo/presiterm", tag = "v0.2.0", defa
 filmstrip = { path = "packages/filmstrip", default-features = false }
 flipkit = { path = "packages/flipkit" }
 
-# The containers (filmstrip): the GIF, the MP4, the Word and the PDF, pure Rust.
+# The containers (filmstrip): the GIF and the MP4, pure Rust.
 png = { version = "0.17", default-features = false }
 gif = { version = "0.13", default-features = false, features = ["std"] }
 color_quant = "1"
@@ -45,9 +44,6 @@ rusty_h264-encoder = "0.17"
 rusty_h264-common = "0.17"
 mp4 = "0.14"
 bytes = "1"
-docx-rs = "0.4"
-zip = { version = "8", default-features = false, features = ["deflate"] }
-lopdf = { version = "0.46", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

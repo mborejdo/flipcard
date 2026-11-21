@@ -46,11 +46,11 @@ jobs:
       - name: lint and render the example
         run: |
           cargo run --locked -p flipcard -- lint examples/film/slides.md
-          cargo run --locked -p flipcard -- examples/film/slides.md --gif --mp4 --docx --pdf --cards target/demo/cards --out target/demo
+          cargo run --locked -p flipcard -- examples/film/slides.md --gif --mp4 --cards target/demo/cards --out target/demo
           cargo run --locked -p flipcard -- lint examples/phone/script.md
 
   # Temporary, until presiterm drops its film: the example rendered by flipcard and by
-  # presiterm v0.2.0 is the same bytes, every file.
+  # presiterm v0.2.0 is the same bytes, the GIF, the MP4 and every card.
   parity:
     runs-on: ubuntu-latest
     steps:
@@ -66,6 +66,6 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: render with both and compare
         run: |
-          cargo run --release --locked -p flipcard -- examples/film/slides.md --gif --mp4 --docx --pdf --cards "$PWD/out/flipcard/cards" --out "$PWD/out/flipcard"
-          (cd presiterm && cargo run --release --locked -p presiterm -- film examples/film/slides.md --gif --mp4 --docx --pdf --cards "$GITHUB_WORKSPACE/out/presiterm/cards" --out "$GITHUB_WORKSPACE/out/presiterm")
+          cargo run --release --locked -p flipcard -- examples/film/slides.md --gif --mp4 --cards "$PWD/out/flipcard/cards" --out "$PWD/out/flipcard"
+          (cd presiterm && cargo run --release --locked -p presiterm -- film examples/film/slides.md --gif --mp4 --cards "$GITHUB_WORKSPACE/out/presiterm/cards" --out "$GITHUB_WORKSPACE/out/presiterm")
           diff -r out/presiterm out/flipcard

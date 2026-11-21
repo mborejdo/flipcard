@@ -8,13 +8,12 @@ use clap::{Parser, Subcommand};
 const ABOUT: &str = "A Markdown deck in, a flip-card film out
 
 Every slide a card drawn by Typst, 16:9, 9:16 or 1:1, every key press (a `+` bullet, a lit `steps` node) a \
-build-in. As a looping GIF, an MP4, a Word file that plays the GIF and a PDF that plays the MP4.";
+build-in. As a looping GIF and an MP4.";
 
 const ROOT_FOOTER: &str = "\
 Examples:
   flipcard talk/slides.md                       talk/slides.gif
-  flipcard talk/slides.md --gif --mp4 --docx --pdf
-                                                all four
+  flipcard talk/slides.md --gif --mp4           both
   flipcard talk/slides.md --out dist            into dist/ instead of next to the deck
   flipcard talk/slides.md --cards dist/cards    every card fully built as PNG (card03-007.png: slide 3, scene 7)
   flipcard talk/slides.md --preview             play the GIF inline in WezTerm or iTerm2
@@ -31,8 +30,7 @@ A flip build-in is `enter` seconds of animation, then `hold` seconds of rest; th
 bring the words in on a beat and hold them for their reading time. Frontmatter (format, safe,
 preset, fps, width, hold, enter, fade, transition, pace, colours, gif-width, gif-fps) and `[film]`
 in flipcard.toml set the same values; a flag beats both, and the format brings its own defaults
-under them. Frontmatter `links:` go under the picture in the Word and PDF files. A card
-that doesn't fit is an error naming the slide; `flipcard lint` finds them all.
+under them. A card that doesn't fit is an error naming the slide; `flipcard lint` finds them all.
 
 Exit codes:
   0  written
@@ -81,18 +79,12 @@ pub(crate) struct Cli {
 pub(crate) struct FilmArgs {
     /// The deck, e.g. talk/slides.md.
     pub(crate) file: Option<PathBuf>,
-    /// Write the animated GIF (the default when no format is given).
+    /// Write the animated GIF (the default without --mp4).
     #[arg(long)]
     pub(crate) gif: bool,
     /// Write the MP4 (pure-Rust H.264).
     #[arg(long)]
     pub(crate) mp4: bool,
-    /// Write an A4 Word file (portrait for tall): the GIF, the deck's links under it.
-    #[arg(long)]
-    pub(crate) docx: bool,
-    /// Write a PDF that plays the MP4 when it opens in Acrobat.
-    #[arg(long)]
-    pub(crate) pdf: bool,
     /// Also write every card, fully built, as PNG here (--cards dist/cards).
     #[arg(long, value_name = "DIR")]
     pub(crate) cards: Option<PathBuf>,

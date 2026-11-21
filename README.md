@@ -3,9 +3,9 @@
 A Markdown deck in, a flip-card film out: every slide a card drawn by Typst, wide (16:9) or tall
 (9:16) for a phone, every key press (a `+` bullet, a lit `steps` node) a build-in of its own. On a
 phone the words come in on a beat: they rise, slide, fade or pop, metrics count up, a marker draws
-under the heading. As a looping GIF, an MP4, a Word file that plays the GIF and a PDF that plays
-the MP4. Pure Rust, nothing started: no ffmpeg, no
-browser.
+under the heading. Pure Rust, nothing started: no ffmpeg, no browser.
+
+flipcard writes GIF and MP4; other tools embed them.
 
 The deck is a [presiterm](https://github.com/mborejdo/presiterm) deck, so the same Markdown also
 presents in WezTerm.
@@ -20,7 +20,7 @@ cargo install --git https://github.com/mborejdo/flipcard flipcard
 
 ```sh
 flipcard talk/slides.md                          # talk/slides.gif
-flipcard talk/slides.md --gif --mp4 --docx --pdf # all four
+flipcard talk/slides.md --gif --mp4              # both
 flipcard talk/slides.md --out dist --cards dist/cards
 flipcard talk/slides.md --format tall --mp4      # 1080x1920 at 30 fps, for a phone
 flipcard talk/slides.md --format tall --preset slide
@@ -62,8 +62,7 @@ hold = 5                  # also format, safe, preset, fps, width, enter, fade, 
   inside their boxes (`typ/motion.typ`), so nothing reflows. Frames are drawn side by side, one
   Typst engine per worker, and stream to the GIF and MP4 encoders on threads of their own; a
   frame that stays is drawn once.
-- `filmstrip` writes the GIF (one learned palette, delta frames), H.264 in an MP4, a Word file
-  whose picture is the GIF, and a PDF page whose Screen annotation plays the MP4 on open.
+- `filmstrip` writes the GIF (one learned palette, delta frames) and H.264 in an MP4.
 - Same deck, same flags, same bytes: `tests/golden.rs` keeps the SHA-256 of every file of both
   examples, `tests/golden/phone.jsonl` every state of the phone film (`FLIPCARD_BLESS=1` rewrites
   them). CI also renders the wide example with presiterm
@@ -76,7 +75,7 @@ hold = 5                  # also format, safe, preset, fps, width, enter, fade, 
 |---|---|
 | [`apps/flipcard`](apps/flipcard) | the command line |
 | [`packages/flipkit`](packages/flipkit) | the film as a library: `Config`, `Options`, `render`, `check`, `Rendered` |
-| [`packages/filmstrip`](packages/filmstrip) | frames to GIF (delta frames), MP4 (pure-Rust H.264), DOCX and PDF, streamed; scene transitions |
+| [`packages/filmstrip`](packages/filmstrip) | frames to GIF (delta frames), MP4 (pure-Rust H.264), streamed; scene transitions |
 
 `deckmark`, `colonmark`, `swatchbook` and `typstkit` come from presiterm by git tag.
 
@@ -89,11 +88,11 @@ cargo test --workspace --all-features --locked
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features --locked
 cargo deny check
 cargo run -p flipcard -- lint examples/film/slides.md
-cargo run -p flipcard -- examples/film/slides.md --gif --mp4 --docx --pdf --out target/demo
+cargo run -p flipcard -- examples/film/slides.md --gif --mp4 --out target/demo
 cargo test --release -p flipkit -- --ignored bench  # under 10 s per 30 s of tall film
 ```
 
 ## License
 
 MIT OR Apache-2.0, at your option: [LICENSE-MIT](LICENSE-MIT), [LICENSE-APACHE](LICENSE-APACHE).
-H.264 is covered by patent pools in some countries, so the MP4 and the PDF are opt-in.
+H.264 is covered by patent pools in some countries, so the MP4 is opt-in.

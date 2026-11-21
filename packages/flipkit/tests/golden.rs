@@ -12,7 +12,7 @@ fn here() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf()
 }
 
-/// Every file `flipcard --gif --mp4 --docx --pdf --cards` writes for `deck`, by its path under
+/// Every file `flipcard --gif --mp4 --cards` writes for `deck`, by its path under
 /// `name`.
 fn films(name: &str, deck: &str, flags: Settings) -> Result<Vec<(String, Vec<u8>)>> {
     let path = here().join("../..").join(deck);
@@ -25,17 +25,15 @@ fn films(name: &str, deck: &str, flags: Settings) -> Result<Vec<(String, Vec<u8>
     };
     let rendered = flipkit::render(&loaded, &options, both)?;
     let stem = path.file_stem().context("the deck's name")?.display();
-    let gif = rendered.gif.clone().context("the GIF")?;
-    let mp4 = rendered.mp4.clone().context("the MP4")?;
-    let note = "The film plays in Acrobat when the page opens; other viewers show the still.";
     let mut files = vec![
-        (format!("{stem}.docx"), rendered.docx(&loaded.deck, &gif)?),
-        (format!("{stem}.gif"), gif),
         (
-            format!("{stem}.pdf"),
-            rendered.pdf(&loaded.deck, &mp4, note)?,
+            format!("{stem}.gif"),
+            rendered.gif.clone().context("the GIF")?,
         ),
-        (format!("{stem}.mp4"), mp4),
+        (
+            format!("{stem}.mp4"),
+            rendered.mp4.clone().context("the MP4")?,
+        ),
     ];
     for (n, (slide, png)) in rendered.cards()?.into_iter().enumerate() {
         files.push((format!("cards/card{slide:02}-{n:03}.png"), png));

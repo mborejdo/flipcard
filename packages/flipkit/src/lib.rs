@@ -2,8 +2,7 @@
 //! (16:9), tall (9:16) or square; every key press of the talk (a `+` bullet, a lit `steps` node)
 //! is a build-in step of its own, with `enter` seconds of animation (bullets appear, marked text
 //! underlines itself, metrics count up, a title lands word by word) and `hold` seconds of rest.
-//! The frames stream to `filmstrip`: a GIF, an MP4, a Word file that plays the GIF, a PDF that
-//! plays the MP4.
+//! The frames stream to `filmstrip`: a GIF and an MP4.
 //!
 //! On a tall card the words come in by a [`Preset`] instead: on a beat, block after block, timed
 //! in Rust and drawn by Typst without reflow.
@@ -11,8 +10,7 @@
 //! The deck is the presiterm dialect, read by [`deckmark`]. This file is the spine: [`Options`],
 //! [`render`] and the containers; [`config`] reads `flipcard.toml`, [`format`](mod@format) the
 //! canvas; `card` makes the scenes, `script` reads `:::{scene}` and numbers the words, `motion`
-//! times them. The card layout is `typ/motion.typ` and `film.typ`, the PDF page `page.typ`, all
-//! embedded.
+//! times them. The card layout is `typ/motion.typ` and `film.typ`, both embedded.
 
 // Pixel arithmetic converts between usize, u32 and f32; a card is a few thousand pixels, far
 // inside every range.
@@ -38,7 +36,7 @@ use anyhow::{Context, Result, bail};
 use filmstrip::Shot;
 use rayon::prelude::*;
 use serde_json::Value;
-use typstkit::{Engine, Input, Main};
+use typstkit::Engine;
 
 use crate::card::Maker;
 
@@ -51,15 +49,6 @@ pub use {deckmark, filmstrip};
 
 /// The card layout, `word()` first.
 const CARD: &str = concat!(include_str!("typ/motion.typ"), include_str!("film.typ"));
-/// The PDF page under the film.
-const PAGE: &str = include_str!("page.typ");
-/// The PDF page (A4, long and short side) and where the poster sits on it, in points; page.typ
-/// reads them as inputs so the Screen annotation lands exactly on the poster. `PDF_FOOT` stays
-/// free under the poster for the title line and the note.
-const A4: (f64, f64) = (841.89, 595.28);
-const PDF_MARGIN: f64 = 34.0;
-const PDF_TOP: f64 = 58.0;
-const PDF_FOOT: f64 = 100.0;
 /// Pixels per logical point: the card is drawn at twice its size for crisp text.
 const SCALE: f32 = 2.0;
 /// Seconds a flip scene stays unless `hold` says otherwise.
@@ -200,17 +189,6 @@ pub struct Rendered {
 }
 
 impl Rendered {
-    /// The still of the first slide's last step: what a viewer sees before the film plays.
-    #[must_use]
-    pub fn poster(&self) -> Option<Frame> {
-        let last_of_first = self
-            .slide_of
-            .iter()
-            .rposition(|&slide| slide == 0)
-            .unwrap_or(0);
-        self.stills.get(last_of_first).cloned()
-    }
-
     /// Every scene's fully built card as PNG, with the 1-based slide it shows.
     pub fn cards(&self) -> Result<Vec<(usize, Vec<u8>)>> {
         self.stills
@@ -218,70 +196,6 @@ impl Rendered {
             .zip(&self.slide_of)
             .map(|(still, slide)| Ok((slide + 1, still.png()?)))
             .collect()
-    }
-
-    /// The Word file: the GIF and the deck's links under it.
-    pub fn docx(&self, deck: &Deck, gif: &[u8]) -> Result<Vec<u8>> {
-        let poster = self.poster().context("no frames")?;
-        let links: Vec<filmstrip::docx::Link> = deck
-            .links
-            .iter()
-            .map(|url| filmstrip::docx::Link {
-                label: strip_scheme(url).to_string(),
-                url: url.clone(),
-            })
-            .collect();
-        let style = filmstrip::docx::Style {
-            font: deck.tokens.fonts.sans.clone(),
-            colour: hex(deck.palette().accent),
-            separator: hex(deck.palette().muted),
-            size: 22,
-        };
-        filmstrip::docx::wrap(&poster, gif, &links, &style)
-    }
-
-    /// The PDF: the poster on an A4 page in the film's orientation, the MP4 playing over it on
-    /// page open. The poster is as wide as the margins allow and as high as the title line
-    /// leaves room for, centred.
-    pub fn pdf(&self, deck: &Deck, mp4: &[u8], note: &str) -> Result<Vec<u8>> {
-        let poster = self.poster().context("no frames")?;
-        let ratio = f64::from(poster.height) / f64::from(poster.width);
-        let (page_w, page_h) = if ratio > 1.0 { (A4.1, A4.0) } else { A4 };
-        let full = 2.0_f64.mul_add(-PDF_MARGIN, page_w);
-        let room = page_h - PDF_TOP - PDF_FOOT;
-        let (w, h) = if full * ratio > room {
-            (room / ratio, room)
-        } else {
-            (full, full * ratio)
-        };
-        let left = (full - w).mul_add(0.5, PDF_MARGIN);
-        let png = poster.png()?;
-        let theme = theme_json(deck);
-        let links = deck.links.join("\n");
-        let geometry = format!("{page_w} {page_h} {left} {PDF_TOP} {w} {h}");
-        let inputs = [
-            ("poster", Input::Bytes(&png)),
-            ("theme", Input::Text(&theme)),
-            ("title", Input::Text(&deck.title)),
-            ("author", Input::Text(&deck.author)),
-            ("links", Input::Text(&links)),
-            ("note", Input::Text(note)),
-            ("geometry", Input::Text(&geometry)),
-        ];
-        let page = deckmark::faces::engine(&deck.faces)?
-            .pdf(
-                Main::Source(PAGE),
-                &inputs,
-                &typstkit::PdfOptions::default(),
-            )
-            .context("the PDF page")?;
-        let rect = filmstrip::pdf::Rect {
-            x: left,
-            y: page_h - PDF_TOP - h,
-            width: w,
-            height: h,
-        };
-        filmstrip::pdf::embed(&page, 1, mp4, rect, "film.mp4")
     }
 }
 
@@ -586,10 +500,6 @@ pub fn check(loaded: &Loaded, options: &Options) -> Result<Vec<Overflow>> {
     Ok(Maker::new(loaded, options)?.paged(&engine)?.1)
 }
 
-fn hex(colour: swatchbook::Rgb) -> String {
-    colour.to_string().trim_start_matches('#').to_uppercase()
-}
-
 pub(crate) fn theme_json(deck: &Deck) -> String {
     let pal = deck.palette();
     let mut map = serde_json::Map::new();
@@ -603,15 +513,6 @@ pub(crate) fn theme_json(deck: &Deck) -> String {
         Value::String(deck.tokens.fonts.display.clone()),
     );
     Value::Object(map).to_string()
-}
-
-/// `https://example.org/x` as `example.org/x`, `mailto:a@b` as `a@b`.
-#[must_use]
-pub fn strip_scheme(url: &str) -> &str {
-    url.strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))
-        .or_else(|| url.strip_prefix("mailto:"))
-        .unwrap_or(url)
 }
 
 /// Where the film's files go: `<out or the deck's folder>/<deck stem>.<ext>`.
@@ -721,14 +622,6 @@ one two three four five six seven eight nine ten
         let found = check(&loaded, &quick()).unwrap();
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].slide, 0);
-    }
-
-    #[test]
-    fn the_poster_is_the_first_slide_fully_built() {
-        let loaded = load("# A\n\n+ one\n+ two\n\n---\n# B\n");
-        let rendered = render(&loaded, &quick(), Outputs::default()).unwrap();
-        assert_eq!(rendered.slide_of, vec![0, 0, 0, 1]);
-        assert_eq!(rendered.poster().unwrap(), rendered.stills[2]);
     }
 
     #[test]
@@ -855,7 +748,5 @@ one two three four five six seven eight nine ten
             output_path(Path::new("talk/slides.md"), Some(Path::new("dist")), "mp4"),
             Path::new("dist/slides.mp4")
         );
-        assert_eq!(strip_scheme("https://a.example/x"), "a.example/x");
-        assert_eq!(strip_scheme("mailto:a@b"), "a@b");
     }
 }
