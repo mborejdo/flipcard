@@ -20,6 +20,8 @@
 
 pub mod config;
 pub mod format;
+mod motion;
+mod script;
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};

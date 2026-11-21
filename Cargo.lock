@@ -915,6 +915,7 @@ dependencies = [
  "colonmark",
  "deckmark",
  "filmstrip",
+ "libm",
  "rayon",
  "serde",
  "serde_json",
