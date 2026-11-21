@@ -3,7 +3,7 @@
 # MP4.
 [workspace]
 resolver = "3"
-members = ["packages/filmstrip"]
+members = ["packages/filmstrip", "packages/flipkit"]
 
 [workspace.package]
 version = "0.1.0"
@@ -13,10 +13,26 @@ authors = ["Michael Borejdo <mborejdo@gmail.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/mborejdo/flipcard"
 homepage = "https://github.com/mborejdo/flipcard"
+# Shared from git (tags), never from crates.io.
+publish = false
 
 [workspace.dependencies]
 anyhow = "1"
+clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = { version = "1", default-features = false, features = ["std", "serde", "parse"] }
+tempfile = "3"
+
+# From presiterm: the deck dialect, Markdown with colon fences, the design tokens, in-process Typst.
+colonmark = { git = "https://github.com/mborejdo/presiterm", tag = "v0.2.0" }
+deckmark = { git = "https://github.com/mborejdo/presiterm", tag = "v0.2.0" }
+swatchbook = { git = "https://github.com/mborejdo/presiterm", tag = "v0.2.0" }
+typstkit = { git = "https://github.com/mborejdo/presiterm", tag = "v0.2.0", default-features = false }
+
+# The workspace's own crates.
+filmstrip = { path = "packages/filmstrip", default-features = false }
+flipkit = { path = "packages/flipkit" }
 
 # The containers (filmstrip): the GIF, the MP4, the Word and the PDF, pure Rust.
 png = { version = "0.17", default-features = false }

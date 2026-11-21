@@ -1,24 +1,37 @@
-//! `presiterm film`: the deck as a film. Every slide is a 16:9 card drawn by Typst in the deck's
-//! tokens; every key press of the talk (a `+` bullet, a lit `steps` node) is a build-in step of
+//! flipkit: a deck as a film. Every slide is a 16:9 card drawn by Typst in the deck's tokens; every key press of the talk (a `+` bullet, a lit `steps` node) is a build-in step of
 //! its own, with `enter` seconds of animation (bullets appear, marked text underlines itself,
 //! metrics count up, a title lands word by word) and `hold` seconds of rest. The frames go to
 //! `filmstrip`: a GIF, an MP4, a Word file that plays the GIF, a PDF that plays the MP4.
 //!
-//! This file is the spine: [`Options`], [`render`] and the containers. The card layout is
-//! `film.typ`, the PDF page `page.typ`, both embedded.
+//! The deck is the presiterm dialect, read by [`deckmark`]. This file is the spine: [`Options`],
+//! [`render`] and the containers; [`config`] reads `flipcard.toml`. The card layout is `film.typ`,
+//! the PDF page `page.typ`, both embedded.
+
+// Pixel arithmetic converts between usize, u32 and f32; a card is a few thousand pixels, far
+// inside every range.
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    reason = "pixel math on a few thousand pixels, far inside every range"
+)]
+
+pub mod config;
 
 use std::fmt::Write as _;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use filmstrip::Frame;
+use deckmark::deck::{Block, Slide, Span};
+use deckmark::diagram::Assets;
+use deckmark::fragments;
 use serde_json::{Value, json};
 use typstkit::{Engine, Input, Main};
 
-use crate::config::{Config, FilmSettings};
-use crate::deck::{Block, Deck, Loaded, Slide, Span};
-use crate::diagram::Assets;
-use crate::render::fragments;
+pub use config::{Config, Look, Settings};
+pub use deckmark::deck::{Deck, Loaded};
+pub use filmstrip::{Frame, Transition};
+pub use {deckmark, filmstrip};
 
 /// The card layout.
 const CARD: &str = include_str!("film.typ");
@@ -74,9 +87,9 @@ impl Default for Options {
 impl Options {
     /// Resolve the options: `flags` beat the deck's frontmatter (`source`), which beats the
     /// config's `[film]` table, which beats the defaults.
-    pub fn resolve(flags: FilmSettings, source: &str, config: &Config) -> Result<Self> {
+    pub fn resolve(flags: Settings, source: &str, config: &Config) -> Result<Self> {
         let front = colonmark::Frontmatter::read(source);
-        let deck = FilmSettings::from_frontmatter(|key| front.get(key).map(str::to_string))?;
+        let deck = Settings::from_frontmatter(|key| front.get(key).map(str::to_string))?;
         let set = flags.over(deck).over(config.film);
         let base = Self::default();
         Ok(Self {
@@ -154,6 +167,15 @@ impl Rendered {
         filmstrip::video::encode(&self.sequence, self.options.fps)
     }
 
+    /// Every scene's fully built card as PNG, with the 1-based slide it shows.
+    pub fn cards(&self) -> Result<Vec<(usize, Vec<u8>)>> {
+        self.scenes
+            .iter()
+            .zip(&self.slide_of)
+            .filter_map(|(scene, slide)| scene.last().map(|still| Ok((slide + 1, still.png()?))))
+            .collect()
+    }
+
     /// The Word file: the GIF and the deck's links under it.
     pub fn docx(&self, deck: &Deck, gif: &[u8]) -> Result<Vec<u8>> {
         let poster = self.poster().context("no frames")?;
@@ -194,7 +216,7 @@ impl Rendered {
             ("note", Input::Text(note)),
             ("geometry", Input::Text(&geometry)),
         ];
-        let page = crate::faces::engine(&deck.faces)?
+        let page = deckmark::faces::engine(&deck.faces)?
             .pdf(
                 Main::Source(PAGE),
                 &inputs,
@@ -242,7 +264,7 @@ pub fn render(loaded: &Loaded, options: &Options) -> Result<Rendered> {
     if options.fps == 0 {
         bail!("film fps must be at least 1");
     }
-    let engine = crate::faces::engine(&loaded.deck.faces)?;
+    let engine = deckmark::faces::engine(&loaded.deck.faces)?;
     let mut assets = Assets::new(&loaded.base, &loaded.deck);
     let n = ((options.enter * f32::from(options.fps)).round() as usize).max(1);
     let mut scenes = Vec::new();
@@ -315,7 +337,7 @@ fn words(slide: &Slide, step: usize) -> usize {
         text.split_whitespace().count()
     }
     fn spans(spans: &[Span]) -> usize {
-        count(&crate::deck::plain(spans))
+        count(&deckmark::deck::plain(spans))
     }
     let mut reveal = 0;
     let mut total = if step == 0 {
@@ -354,9 +376,9 @@ fn words(slide: &Slide, step: usize) -> usize {
 }
 
 /// Draw only the fully built card of every slide and report the ones that overflow; what
-/// `presiterm lint --film` runs.
+/// `flipcard lint` runs.
 pub fn check(loaded: &Loaded, options: &Options) -> Result<Vec<Overflow>> {
-    let engine = crate::faces::engine(&loaded.deck.faces)?;
+    let engine = deckmark::faces::engine(&loaded.deck.faces)?;
     let mut assets = Assets::new(&loaded.base, &loaded.deck);
     let mut overflows = Vec::new();
     for (index, slide) in loaded.deck.slides.iter().enumerate() {
@@ -548,7 +570,7 @@ pub fn output_path(deck_file: &Path, out: Option<&Path>, ext: &str) -> std::path
         .and_then(|s| s.to_str())
         .unwrap_or("film");
     let dir = out.map_or_else(
-        || crate::config::deck_dir(deck_file),
+        || deckmark::deck_dir(deck_file),
         std::path::Path::to_path_buf,
     );
     dir.join(format!("{stem}.{ext}"))
@@ -558,8 +580,9 @@ pub fn output_path(deck_file: &Path, out: Option<&Path>, ext: &str) -> std::path
 mod tests {
     use std::path::Path;
 
+    use deckmark::deck;
+
     use super::*;
-    use crate::deck;
 
     fn load(source: &str) -> Loaded {
         Loaded {

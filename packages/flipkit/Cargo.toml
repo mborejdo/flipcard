@@ -1,0 +1,31 @@
+[package]
+name = "flipkit"
+description = "A Markdown deck as a flip-card film: every slide a card drawn by Typst, every key press a build-in, out as GIF, MP4, DOCX and PDF."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish.workspace = true
+readme = "README.md"
+keywords = ["gif", "mp4", "slides", "typst", "animation"]
+categories = ["multimedia::encoding", "rendering"]
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+colonmark.workspace = true
+deckmark.workspace = true
+filmstrip = { workspace = true, features = ["gif", "mp4", "docx", "pdf", "serde"] }
+serde.workspace = true
+serde_json.workspace = true
+swatchbook.workspace = true
+toml.workspace = true
+typstkit = { workspace = true, default-features = false, features = ["packages", "pdf"] }
+
+[dev-dependencies]
+tempfile.workspace = true
