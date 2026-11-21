@@ -348,7 +348,7 @@ pub fn render(loaded: &Loaded, options: &Options, outputs: Outputs) -> Result<Re
         transition: options.transition,
         ticks: TICKS,
     };
-    let plan: Vec<(usize, f32)> = holds.iter().map(|&hold| (n, hold)).collect();
+    let plan: Vec<_> = holds.iter().map(|&hold| (n, TICKS, hold)).collect();
     let shots = filmstrip::shots(&plan, timing)?;
     let mut film = Film::new(options, outputs, &stills)?;
     let runs: Vec<&[Shot]> = shots.chunk_by(PartialEq::eq).collect();

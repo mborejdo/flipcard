@@ -272,7 +272,8 @@ pub struct Timing {
     pub fade: f32,
     /// How one scene gives way to the next.
     pub transition: Transition,
-    /// Frames each build-in frame stays (2 at 10 fps gives the stop-motion look).
+    /// Frames each build-in frame of a [`sequence`] stays (2 at 10 fps gives the stop-motion
+    /// look).
     pub ticks: usize,
 }
 
@@ -311,11 +312,11 @@ pub enum Shot {
     },
 }
 
-/// The plan of the whole film, one [`Shot`] per frame; `scenes` are (build-in frames, hold)
-/// pairs. Every build-in frame stays `ticks` frames, the last one until the scene's `hold` is
+/// The plan of the whole film, one [`Shot`] per frame; `scenes` are (build-in frames, ticks,
+/// hold). Every build-in frame stays `ticks` frames, the last one until the scene's `hold` is
 /// used up, then the transition into the next scene, the last into the first so the loop has
 /// no jump.
-pub fn shots(scenes: &[(usize, f32)], timing: Timing) -> Result<Vec<Shot>> {
+pub fn shots(scenes: &[(usize, usize, f32)], timing: Timing) -> Result<Vec<Shot>> {
     if scenes.is_empty() {
         bail!("no scene frames");
     }
@@ -323,9 +324,9 @@ pub fn shots(scenes: &[(usize, f32)], timing: Timing) -> Result<Vec<Shot>> {
         Transition::Cut => 0,
         _ => timing.frames(timing.fade),
     };
-    let ticks = timing.ticks.max(1);
     let mut out = Vec::new();
-    for (scene, &(frames, hold)) in scenes.iter().enumerate() {
+    for (scene, &(frames, ticks, hold)) in scenes.iter().enumerate() {
+        let ticks = ticks.max(1);
         let Some(last) = frames.checked_sub(1) else {
             bail!("scene {} has no frames", scene + 1);
         };
@@ -377,7 +378,10 @@ pub fn sequence(scenes: &[Scene<'_>], timing: Timing) -> Result<Vec<Frame>> {
             odd.height
         );
     }
-    let plan: Vec<(usize, f32)> = scenes.iter().map(|s| (s.frames.len(), s.hold)).collect();
+    let plan: Vec<_> = scenes
+        .iter()
+        .map(|s| (s.frames.len(), timing.ticks, s.hold))
+        .collect();
     let frame = |scene: usize, frame: usize| &scenes[scene].frames[frame];
     Ok(shots(&plan, timing)?
         .into_iter()
