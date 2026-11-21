@@ -90,7 +90,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features --lock
 cargo deny check
 cargo run -p flipcard -- lint examples/film/slides.md
 cargo run -p flipcard -- examples/film/slides.md --gif --mp4 --docx --pdf --out target/demo
-cargo test --release -p flipkit -- --ignored bench  # a 30 s tall film in under 10 s
+cargo test --release -p flipkit -- --ignored bench  # under 10 s per 30 s of tall film
 ```
 
 ## License
