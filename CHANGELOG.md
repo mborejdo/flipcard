@@ -12,6 +12,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 - `examples/phone`, a short tall film.
 - `filmstrip`: `gif::Writer` and `video::Writer` (frame by frame), `Frame::downscale`, `shots`.
 - Golden SHA-256 of both examples (`FLIPCARD_BLESS=1` rewrites them); a bench at 1080x1920.
+- Motion presets `rise`, `slide`, `fade`, `pop`, `still` next to `flip`: frontmatter `preset:`,
+  `[film] preset`, `--preset`, and `:::{scene} <preset>` per slide with `:pace:` and `:beat:`.
+  Words come in on a beat, block after block; `//` waits a beat. The card is laid out once and
+  the words move inside their boxes, so nothing reflows.
+- `==word==` in a heading draws an accent marker behind it once the words have landed; a tall
+  heading without one gets a bar under it. Metrics rise and count up in their own format.
+- A tall slide that doesn't fit pages on into a follow-on scene with its heading;
+  `flipcard lint` warns about a tall slide with more than 12 words (`flipkit::crowded`).
+- `tests/golden/phone.jsonl`: every state of the phone film.
 
 ### Changed
 
@@ -22,6 +31,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 - The H.264 level follows the macroblocks per frame and second (3.0 for 640x360, 4.0 for
   1080x1920 at 30 fps).
 - The Word and PDF pages of a tall film are A4 portrait.
+- Tall defaults to `rise` and big centred text (on the 360 pt canvas: heading 40, text 26, metric
+  64 with its label at 18, footer 12; metrics one per row); wide stays `flip`. `hold` is a floor, unset by default (7 s for `flip`).
+- `gif::Writer::push` and `video::Writer::push` take how often the frame repeats; `shots` takes
+  ticks per scene. The GIF and MP4 encode on threads of their own while frames are drawn; a frame
+  whose state didn't change is not drawn again.
+- The phone example shows every preset, a marker, a pause, metrics and a slide that pages on.
 
 The wide example is the same bytes as before.
 

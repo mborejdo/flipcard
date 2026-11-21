@@ -1,8 +1,10 @@
 # flipcard
 
 A Markdown deck in, a flip-card film out: every slide a card drawn by Typst, wide (16:9) or tall
-(9:16) for a phone, every key press (a `+` bullet, a lit `steps` node) a build-in of its own. As a looping GIF, an MP4, a Word file
-that plays the GIF and a PDF that plays the MP4. Pure Rust, nothing started: no ffmpeg, no
+(9:16) for a phone, every key press (a `+` bullet, a lit `steps` node) a build-in of its own. On a
+phone the words come in on a beat: they rise, slide, fade or pop, metrics count up, a marker draws
+under the heading. As a looping GIF, an MP4, a Word file that plays the GIF and a PDF that plays
+the MP4. Pure Rust, nothing started: no ffmpeg, no
 browser.
 
 The deck is a [presiterm](https://github.com/mborejdo/presiterm) deck, so the same Markdown also
@@ -21,6 +23,7 @@ flipcard talk/slides.md                          # talk/slides.gif
 flipcard talk/slides.md --gif --mp4 --docx --pdf # all four
 flipcard talk/slides.md --out dist --cards dist/cards
 flipcard talk/slides.md --format tall --mp4      # 1080x1920 at 30 fps, for a phone
+flipcard talk/slides.md --format tall --preset slide
 flipcard lint talk/slides.md                     # does every card fit
 flipcard config talk/slides.md                   # which flipcard.toml applies
 ```
@@ -28,7 +31,7 @@ flipcard config talk/slides.md                   # which flipcard.toml applies
 `flipcard --help` lists every flag (`--hold 5`, `--transition wipe`, ...) with an example and the
 exit codes. [docs/guide.md](docs/guide.md): what each part of a deck becomes, the files, timing,
 fonts. [`examples/film`](examples/film) shows the build-ins: bullets, marked text, metrics, a
-stepped diagram, code; [`examples/phone`](examples/phone) a short tall film.
+stepped diagram, code; [`examples/phone`](examples/phone) a short tall film with every preset.
 
 ## Config
 
@@ -46,20 +49,24 @@ accent = "#2b2459"
 display = "Inter"         # headings, in the heaviest weight the family has
 
 [film]
-hold = 5                  # also format, safe, fps, width, enter, fade, transition, pace,
-                          # colours, gif-width, gif-fps
+hold = 5                  # also format, safe, preset, fps, width, enter, fade, transition,
+                          # pace, colours, gif-width, gif-fps
 ```
 
 ## How it works
 
 - `deckmark` (from presiterm) reads the deck into slides of blocks.
 - `flipkit` draws every slide at every build-in instant as a Typst card (`film.typ`, in the
-  deck's tokens) and times the scenes. Frames are drawn side by side, one Typst engine per
-  worker, and stream to the encoders in chunks; a frame that stays is drawn once.
+  deck's tokens) and times the scenes. With a motion preset Rust owns the time: the card is laid
+  out once at rest, and per frame a small JSON of word looks moves, scales and fades the words
+  inside their boxes (`typ/motion.typ`), so nothing reflows. Frames are drawn side by side, one
+  Typst engine per worker, and stream to the GIF and MP4 encoders on threads of their own; a
+  frame that stays is drawn once.
 - `filmstrip` writes the GIF (one learned palette, delta frames), H.264 in an MP4, a Word file
   whose picture is the GIF, and a PDF page whose Screen annotation plays the MP4 on open.
 - Same deck, same flags, same bytes: `tests/golden.rs` keeps the SHA-256 of every file of both
-  examples (`FLIPCARD_BLESS=1` rewrites them). CI also renders the wide example with presiterm
+  examples, `tests/golden/phone.jsonl` every state of the phone film (`FLIPCARD_BLESS=1` rewrites
+  them). CI also renders the wide example with presiterm
   v0.2.0 and compares every file byte for byte.
 - Design note: [docs/design.md](docs/design.md).
 
@@ -83,7 +90,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features --lock
 cargo deny check
 cargo run -p flipcard -- lint examples/film/slides.md
 cargo run -p flipcard -- examples/film/slides.md --gif --mp4 --docx --pdf --out target/demo
-cargo test --release -p flipkit -- --ignored bench  # a 1080x1920 frame, the H.264 encode
+cargo test --release -p flipkit -- --ignored bench  # a 30 s tall film in under 10 s
 ```
 
 ## License

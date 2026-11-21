@@ -5,7 +5,8 @@ flipcard talk/slides.md                      # talk/slides.gif
 flipcard talk/slides.md --mp4 --docx --pdf   # the MP4, a Word file, a PDF
 flipcard talk/slides.md --out dist           # into dist/ instead of next to the deck
 flipcard talk/slides.md --cards dist/cards   # every card, fully built, as PNG
-flipcard talk/slides.md --format tall        # 9:16 for a phone
+flipcard talk/slides.md --format tall        # 9:16 for a phone, words rise in
+flipcard talk/slides.md --preset pop         # words pop in, on a wide card too
 flipcard talk/slides.md --preview            # play the GIF inline in WezTerm or iTerm2
 flipcard lint talk/slides.md                 # which cards do not fit
 ```
@@ -24,6 +25,51 @@ A presiterm deck renders as a film: every slide a card in the deck's tokens (`[t
 | a picture, a table, a code block | drawn in the card |
 | `:::{notes}` | never in the film |
 | `{only}` blocks | follow the frontmatter's `tags:` |
+
+That is the `flip` preset, the default on a wide card. The other presets are below.
+
+## Motion
+
+A preset says how the words come in. Frontmatter `preset:`, `[film] preset` or `--preset` set it
+for the film, `:::{scene}` for one slide:
+
+```markdown
+# One change at a time
+
+:::{scene} slide
+:pace: 160
+:beat: 0.5
+:::
+
+- easy to review
+```
+
+| preset | the words |
+|:--|:--|
+| `flip` | the card build-in above (wide default) |
+| `rise` | word by word, up from below as they fade in (tall default) |
+| `slide` | word by word, in from the left, settling with a little spring |
+| `fade` | block by block, fading in |
+| `pop` | word by word, scaled up past their size and back |
+| `still` | all there at once |
+
+Time runs in beats (0.4 s, `:beat:` changes it). The heading comes in first, then each block on
+the beat after the one before has landed; inside a block a word follows the last by half a beat.
+`//` between words waits one more beat and is not shown. A scene then holds for its words read at
+`pace`, at least four beats; `hold` is the floor when set. `enter` is for `flip` only.
+
+- `==word==` in a heading: an accent marker draws behind it from the left once the words have
+  landed. A tall heading without one gets a bar under it instead.
+- `:::{metrics}`: the values rise and count up over three beats, in their own format (`1 200`,
+  `60 %`, `3.5x`), the digits tabular so nothing jumps.
+- Every word sits where it ends up: the card is laid out once at rest and the words move, scale
+  and fade inside their boxes. A scene's last frame is its still.
+
+On a tall card the text is big and centred, one idea per screen. On the 360 pt canvas: heading 40,
+text and lists 26, a metric 64 with its label at 18, the footer 12; metrics stack one per row. That
+holds about 12 words: `flipcard lint` warns above. A slide that doesn't fit is not shrunk: it pages
+on into a follow-on scene with the same heading, cut after a block, else after a list item or a
+paragraph line. Only when not even that fits is it an overflow.
 
 ## Files
 
@@ -44,11 +90,12 @@ frontmatter beats file beats the format's defaults.
 | value | flag | default | what |
 |:--|:--|--:|:--|
 | format | `--format` | wide | `wide` (16:9), `tall` (9:16) or `square` (1:1) |
+| preset | `--preset` | flip | how the words come in, see Motion; `rise` for tall |
 | safe | `--safe` | none | `phone` keeps the content clear of a phone app's bars, captions and buttons |
 | fps | `--fps` | 10 | frames per second |
 | width | `--width` | 640 | pixels, even (the MP4 needs it); the height follows the format |
-| hold | `--hold` | 7 | seconds every scene stays, build-in included |
-| enter | `--enter` | 1.6 | seconds of build-in at the start of every scene |
+| hold | `--hold` | 7 | seconds every scene stays at least, build-in included (motion: unset) |
+| enter | `--enter` | 1.6 | seconds of `flip` build-in at the start of every scene |
 | fade | `--fade` | 0.4 | seconds a transition between scenes takes |
 | transition | `--transition` | fade | `fade`, `wipe`, `push`, `pixelize`, `circle`, `split` or `cut` |
 | pace | `--pace` | 200 | words per minute; a scene with more words than `hold` covers stays longer |
@@ -56,8 +103,8 @@ frontmatter beats file beats the format's defaults.
 | gif-width | `--gif-width` | width | the GIF scaled down by a whole factor, at least this wide |
 | gif-fps | `--gif-fps` | fps | the GIF takes every n-th frame |
 
-`tall` sets width 1080 (1080x1920), fps 30, fade 0.2, safe `phone`, gif-width 360 and gif-fps
-15: the MP4 is the film for the phone, the GIF a preview. `square` is the same at 1080x1080
+`tall` sets width 1080 (1080x1920), fps 30, fade 0.2, safe `phone`, preset `rise`, gif-width 360
+and gif-fps 15: the MP4 is the film for the phone, the GIF a preview. `square` is the same at 1080x1080
 without the safe area. The card's content sits inside the safe area, centred; what doesn't fit
 there is an overflow, as on a wide card.
 
@@ -92,7 +139,8 @@ scheme (`https://`, `mailto:`) stripped from the label.
 
 A card that doesn't fit is never cropped: `flipcard` stops with
 `slide 4 (The chain): the card overflows onto 2 pages; trim it`, and `flipcard lint` lists every
-such card. Fix: fewer words, a smaller picture (`{h=5}`), or a second slide.
+such card. Fix: fewer words, a smaller picture (`{h=5}`), or a second slide. A tall slide pages on
+first (see Motion).
 
 ## Fonts
 
