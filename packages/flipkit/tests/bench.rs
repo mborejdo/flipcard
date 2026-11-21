@@ -44,7 +44,7 @@ fn bench_a_tall_frame_the_encode_and_a_film() {
         for k in 0..15_u8 {
             let blend = pair[0].blend(&pair[1], f32::from(k) / 15.0);
             let start = Instant::now();
-            writer.push(&blend).unwrap();
+            writer.push(&blend, 1).unwrap();
             spent += start.elapsed();
             frames += 1;
         }

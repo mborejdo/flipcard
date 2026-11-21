@@ -49,7 +49,7 @@ pub fn encode(frames: &[Frame], fps: u16) -> Result<Vec<u8>> {
     };
     let mut writer = Writer::new(first.width, first.height, fps)?;
     for f in frames {
-        writer.push(f)?;
+        writer.push(f, 1)?;
     }
     writer.finish()
 }
@@ -63,21 +63,16 @@ pub struct Writer {
     fps: u16,
     sps: Vec<u8>,
     pps: Vec<u8>,
-    /// The picture being collected.
-    pending: Option<Sample>,
-    /// Pictures written, frames pushed.
+    /// The picture being collected: whether it is a keyframe, its length-prefixed NALs.
+    pending: Option<(bool, Vec<u8>)>,
+    /// Pictures written.
     written: u64,
-    pushed: u64,
-    /// The last frame's pixels and its YUV: the same pixels are not converted again.
-    last: Vec<u8>,
-    yuv: Option<YuvFrame>,
 }
 
 impl std::fmt::Debug for Writer {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         out.debug_struct("Writer")
             .field("size", &self.size)
-            .field("fps", &self.fps)
             .finish_non_exhaustive()
     }
 }
@@ -118,27 +113,20 @@ impl Writer {
             pps: Vec::new(),
             pending: None,
             written: 0,
-            pushed: 0,
-            last: Vec::new(),
-            yuv: None,
         })
     }
 
-    /// Encode the next frame; it has the video's size.
-    pub fn push(&mut self, frame: &Frame) -> Result<()> {
+    /// Encode `frame`, the video's size, as the next `count` frames.
+    pub fn push(&mut self, frame: &Frame, count: usize) -> Result<()> {
         if (frame.width, frame.height) != self.size || !frame.is_consistent() {
             bail!("frames differ in size");
         }
-        if self.yuv.is_none() || self.last != frame.rgb {
-            self.last.clone_from(&frame.rgb);
-            self.yuv = Some(i420(frame));
+        let yuv = i420(frame);
+        for _ in 0..count {
+            let stream = self.enc.encode(&yuv);
+            self.take(&stream)?;
         }
-        let Some(yuv) = &self.yuv else {
-            bail!("no picture to encode");
-        };
-        let stream = self.enc.encode(yuv);
-        self.pushed += 1;
-        self.take(&stream)
+        Ok(())
     }
 
     /// Flush the encoder and close the container; the MP4's bytes.
@@ -148,13 +136,6 @@ impl Writer {
         self.write_pending()?;
         if self.written == 0 {
             bail!("no frames");
-        }
-        if self.written != self.pushed {
-            bail!(
-                "the encoder returned {} pictures for {} frames",
-                self.written,
-                self.pushed
-            );
         }
         self.mp4.write_end()?;
         Ok(self.mp4.into_writer().into_inner())
@@ -166,17 +147,14 @@ impl Writer {
         for nal in nals(stream) {
             let Some(&header) = nal.first() else { continue };
             let kind = header & 0x1f;
+            if matches!(kind, 1 | 5) {
+                self.write_pending()?;
+                self.pending = Some((kind == 5, Vec::with_capacity(nal.len() + 4)));
+            }
             match kind {
                 7 => self.sps = nal.to_vec(),
                 8 => self.pps = nal.to_vec(),
                 9 | 6 => {}, // access unit delimiter, SEI: not needed in MP4
-                1 | 5 => {
-                    self.write_pending()?;
-                    let mut sample = Vec::with_capacity(nal.len() + 4);
-                    sample.extend_from_slice(&u32::try_from(nal.len())?.to_be_bytes());
-                    sample.extend_from_slice(nal);
-                    self.pending = Some((kind == 5, sample));
-                },
                 _ => {
                     if let Some((_, sample)) = self.pending.as_mut() {
                         sample.extend_from_slice(&u32::try_from(nal.len())?.to_be_bytes());
@@ -270,9 +248,6 @@ fn i420(frame: &Frame) -> YuvFrame {
         v: cr,
     }
 }
-
-/// One picture for the muxer: whether it is a keyframe, and its length-prefixed NALs.
-type Sample = (bool, Vec<u8>);
 
 /// The NALs of an Annex-B stream, start codes removed.
 fn nals(stream: &[u8]) -> Vec<&[u8]> {

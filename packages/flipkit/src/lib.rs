@@ -351,9 +351,10 @@ pub fn render(loaded: &Loaded, options: &Options, outputs: Outputs) -> Result<Re
     let plan: Vec<(usize, f32)> = holds.iter().map(|&hold| (n, hold)).collect();
     let shots = filmstrip::shots(&plan, timing)?;
     let mut film = Film::new(options, outputs, &stills)?;
-    for chunk in runs(&shots).chunks(CHUNK) {
-        let frames = pool.run(chunk, |engine, &(shot, _)| {
-            Ok(match shot {
+    let runs: Vec<&[Shot]> = shots.chunk_by(PartialEq::eq).collect();
+    for chunk in runs.chunks(CHUNK) {
+        let frames = pool.run(chunk, |engine, run| {
+            Ok(match run[0] {
                 Shot::Card { scene, frame } if frame + 1 == n => Arc::clone(&stills[scene]),
                 Shot::Card { scene, frame: 0 } => Arc::clone(&firsts[scene]),
                 Shot::Card { scene, frame } => Arc::new(cards[scene].draw(engine, frame)?.0),
@@ -363,11 +364,10 @@ pub fn render(loaded: &Loaded, options: &Options, outputs: Outputs) -> Result<Re
                 },
             })
         })?;
-        for (frame, &(_, count)) in frames.iter().zip(chunk) {
-            film.push(frame, count)?;
+        for (frame, run) in frames.iter().zip(chunk) {
+            film.push(frame, run.len())?;
         }
     }
-    drop(firsts);
     Ok(Rendered {
         stills: stills.into_iter().map(Arc::unwrap_or_clone).collect(),
         slide_of,
@@ -377,18 +377,6 @@ pub fn render(loaded: &Loaded, options: &Options, outputs: Outputs) -> Result<Re
         mp4: film.mp4.map(filmstrip::video::Writer::finish).transpose()?,
         options: options.clone(),
     })
-}
-
-/// The shots in runs of the same one, each with how many frames it stays.
-fn runs(shots: &[Shot]) -> Vec<(Shot, usize)> {
-    let mut runs: Vec<(Shot, usize)> = Vec::new();
-    for &shot in shots {
-        match runs.last_mut() {
-            Some((last, count)) if *last == shot => *count += 1,
-            _ => runs.push((shot, 1)),
-        }
-    }
-    runs
 }
 
 /// The encoders the film streams into.
@@ -433,18 +421,11 @@ impl Film {
     /// Push `frame` as the next `count` frames.
     fn push(&mut self, frame: &Frame, count: usize) -> Result<()> {
         if let Some(mp4) = &mut self.mp4 {
-            for _ in 0..count {
-                mp4.push(frame)?;
-            }
+            mp4.push(frame, count)?;
         }
-        let takes = (self.at..self.at + count)
-            .filter(|i| i % self.every == 0)
-            .count();
+        let takes = (self.at + count).div_ceil(self.every) - self.at.div_ceil(self.every);
         if let Some(gif) = self.gif.as_mut().filter(|_| takes > 0) {
-            let small = frame.downscale(self.scale);
-            for _ in 0..takes {
-                gif.push(&small)?;
-            }
+            gif.push(&frame.downscale(self.scale), takes)?;
         }
         self.at += count;
         Ok(())
@@ -496,15 +477,8 @@ impl Pool {
 /// A new engine with the deck's fonts, loaded as `deckmark::faces::engine` loads them: a file as
 /// it is, a folder by its font files in name order.
 fn engine(faces: &[PathBuf]) -> Result<Engine> {
-    let is_font = |path: &Path| {
-        path.extension()
-            .and_then(|ext| ext.to_str())
-            .is_some_and(|ext| {
-                ["otf", "ttf", "ttc"]
-                    .iter()
-                    .any(|k| ext.eq_ignore_ascii_case(k))
-            })
-    };
+    let is_font =
+        |path: &Path| deckmark::deck::extension_is(&path.to_string_lossy(), &["otf", "ttf", "ttc"]);
     let mut builder = Engine::builder();
     for face in faces {
         let mut files = vec![face.clone()];

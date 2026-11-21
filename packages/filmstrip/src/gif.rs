@@ -39,7 +39,7 @@ pub fn encode(frames: &[Frame], keyframes: &[Frame], fps: u16, colours: usize) -
     };
     let mut writer = Writer::new(first.width, first.height, stills, fps, colours)?;
     for f in frames {
-        writer.push(f)?;
+        writer.push(f, 1)?;
     }
     writer.finish()
 }
@@ -57,9 +57,7 @@ pub struct Writer {
     /// The indexed frame on screen.
     shown: Option<Vec<u8>>,
     /// The indexed frame waiting to be written, and how many frames it stays.
-    pending: Option<(Vec<u8>, u32)>,
-    /// The pixels of the last frame pushed: the same pixels skip the quantizing.
-    last: Vec<u8>,
+    pending: Option<(Vec<u8>, usize)>,
 }
 
 impl std::fmt::Debug for Writer {
@@ -115,21 +113,15 @@ impl Writer {
             tick: (100.0 / f32::from(fps)).round().max(1.0) as u32,
             shown: None,
             pending: None,
-            last: Vec::new(),
         })
     }
 
-    /// Add the next frame; it has the GIF's size.
-    pub fn push(&mut self, frame: &Frame) -> Result<()> {
+    /// Add `frame`, the GIF's size, as the next `count` frames.
+    pub fn push(&mut self, frame: &Frame, count: usize) -> Result<()> {
         let (w, h) = self.size;
         if (frame.width, frame.height) != (u32::from(w), u32::from(h)) || !frame.is_consistent() {
             bail!("frames differ in size");
         }
-        if let Some((_, n)) = self.pending.as_mut().filter(|_| self.last == frame.rgb) {
-            *n += 1;
-            return Ok(());
-        }
-        self.last.clone_from(&frame.rgb);
         let (nq, cache) = (&self.nq, &mut self.cache);
         let indexed: Vec<u8> = frame
             .rgb
@@ -143,10 +135,10 @@ impl Writer {
             })
             .collect();
         match self.pending.as_mut() {
-            Some((buf, n)) if *buf == indexed => *n += 1,
+            Some((buf, n)) if *buf == indexed => *n += count,
             _ => {
                 self.flush()?;
-                self.pending = Some((indexed, 1));
+                self.pending = Some((indexed, count));
             },
         }
         Ok(())
@@ -164,112 +156,94 @@ impl Writer {
     /// Write the pending frame, which then is on screen.
     fn flush(&mut self) -> Result<()> {
         if let Some((buf, n)) = self.pending.take() {
-            let (w, h) = self.size;
-            let delay = n * self.tick;
-            write(
-                &mut self.enc,
-                w,
-                h,
-                &buf,
-                self.shown.as_deref(),
-                self.transparent,
-                delay,
-            )?;
+            self.write(&buf, n as u32 * self.tick)?;
             self.shown = Some(buf);
         }
         Ok(())
     }
-}
 
-/// Write one frame as the smallest rectangle that differs from what is on screen; unchanged
-/// pixels inside it are transparent. The first frame (no `prev`) is written whole.
-fn write<W: std::io::Write>(
-    enc: &mut Encoder<W>,
-    w: u16,
-    h: u16,
-    indexed: &[u8],
-    prev: Option<&[u8]>,
-    transparent: u8,
-    delay_cs: u32,
-) -> Result<()> {
-    let first = delay_cs.min(MAX_DELAY_CS);
-    let (wu, hu) = (usize::from(w), usize::from(h));
-    let frame = match prev {
-        Some(prev) => {
-            let (mut x0, mut y0, mut x1, mut y1) = (wu, hu, 0usize, 0usize);
-            for y in 0..hu {
-                let row = &indexed[y * wu..(y + 1) * wu];
-                let old = &prev[y * wu..(y + 1) * wu];
-                if row == old {
-                    continue;
+    /// Write one frame as the smallest rectangle that differs from what is on screen; unchanged
+    /// pixels inside it are transparent. The first frame is written whole.
+    fn write(&mut self, indexed: &[u8], delay_cs: u32) -> Result<()> {
+        let first = delay_cs.min(MAX_DELAY_CS);
+        let (w, h) = self.size;
+        let (wu, hu) = (usize::from(w), usize::from(h));
+        let transparent = self.transparent;
+        let frame = match self.shown.as_deref() {
+            Some(prev) => {
+                let (mut x0, mut y0, mut x1, mut y1) = (wu, hu, 0usize, 0usize);
+                for y in 0..hu {
+                    let row = &indexed[y * wu..(y + 1) * wu];
+                    let old = &prev[y * wu..(y + 1) * wu];
+                    if row == old {
+                        continue;
+                    }
+                    let lx = row.iter().zip(old).position(|(a, b)| a != b).unwrap_or(0);
+                    let rx = wu
+                        - row
+                            .iter()
+                            .zip(old)
+                            .rev()
+                            .position(|(a, b)| a != b)
+                            .unwrap_or(0);
+                    x0 = x0.min(lx);
+                    x1 = x1.max(rx);
+                    y0 = y0.min(y);
+                    y1 = y1.max(y + 1);
                 }
-                let lx = row.iter().zip(old).position(|(a, b)| a != b).unwrap_or(0);
-                let rx = wu
-                    - row
-                        .iter()
-                        .zip(old)
-                        .rev()
-                        .position(|(a, b)| a != b)
-                        .unwrap_or(0);
-                x0 = x0.min(lx);
-                x1 = x1.max(rx);
-                y0 = y0.min(y);
-                y1 = y1.max(y + 1);
-            }
-            if x1 <= x0 || y1 <= y0 {
-                // nothing changed (callers fold identical frames, so this is a safety net)
-                (x0, y0, x1, y1) = (0, 0, 1, 1);
-            }
-            let (cw, ch) = (x1 - x0, y1 - y0);
-            let mut buffer = Vec::with_capacity(cw * ch);
-            for y in y0..y1 {
-                for x in x0..x1 {
-                    let i = y * wu + x;
-                    buffer.push(if indexed[i] == prev[i] {
-                        transparent
-                    } else {
-                        indexed[i]
-                    });
+                if x1 <= x0 || y1 <= y0 {
+                    // nothing changed (identical frames fold, so this is a safety net)
+                    (x0, y0, x1, y1) = (0, 0, 1, 1);
                 }
-            }
-            GifFrame {
-                left: u16::try_from(x0)?,
-                top: u16::try_from(y0)?,
-                width: u16::try_from(cw)?,
-                height: u16::try_from(ch)?,
-                delay: first as u16,
-                dispose: DisposalMethod::Keep,
-                transparent: Some(transparent),
-                buffer: Cow::Owned(buffer),
+                let mut buffer = Vec::with_capacity((x1 - x0) * (y1 - y0));
+                for y in y0..y1 {
+                    for i in y * wu + x0..y * wu + x1 {
+                        buffer.push(if indexed[i] == prev[i] {
+                            transparent
+                        } else {
+                            indexed[i]
+                        });
+                    }
+                }
+                GifFrame {
+                    left: u16::try_from(x0)?,
+                    top: u16::try_from(y0)?,
+                    width: u16::try_from(x1 - x0)?,
+                    height: u16::try_from(y1 - y0)?,
+                    transparent: Some(transparent),
+                    buffer: Cow::Owned(buffer),
+                    ..GifFrame::default()
+                }
+            },
+            None => GifFrame {
+                width: w,
+                height: h,
+                buffer: Cow::Owned(indexed.to_vec()),
                 ..GifFrame::default()
-            }
-        },
-        None => GifFrame {
-            width: w,
-            height: h,
+            },
+        };
+        self.enc.write_frame(&GifFrame {
             delay: first as u16,
             dispose: DisposalMethod::Keep,
-            buffer: Cow::Owned(indexed.to_vec()),
-            ..GifFrame::default()
-        },
-    };
-    enc.write_frame(&frame)?;
-    let mut rest = delay_cs - first;
-    while rest > 0 {
-        let d = rest.min(MAX_DELAY_CS);
-        let keep = GifFrame {
-            width: 1,
-            height: 1,
-            delay: d as u16,
-            dispose: DisposalMethod::Keep,
-            transparent: Some(0),
-            buffer: Cow::Owned(vec![0]),
-            ..GifFrame::default()
-        };
-        enc.write_frame(&keep)?;
-        rest -= d;
+            ..frame
+        })?;
+        let mut rest = delay_cs - first;
+        while rest > 0 {
+            let d = rest.min(MAX_DELAY_CS);
+            let keep = GifFrame {
+                width: 1,
+                height: 1,
+                delay: d as u16,
+                dispose: DisposalMethod::Keep,
+                transparent: Some(0),
+                buffer: Cow::Owned(vec![0]),
+                ..GifFrame::default()
+            };
+            self.enc.write_frame(&keep)?;
+            rest -= d;
+        }
+        Ok(())
     }
-    Ok(())
 }
 
 #[cfg(test)]
