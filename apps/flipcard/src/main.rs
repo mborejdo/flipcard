@@ -53,7 +53,12 @@ fn film(args: &FilmArgs) -> Result<i32> {
     let config = Config::load(&deck_dir(file))?;
     let loaded = config.deck(file)?;
     let options = Options::resolve(args.settings(), &loaded.source, &config)?;
-    let rendered = flipkit::render(&loaded, &options)?;
+    let any_other = args.mp4 || args.docx || args.pdf;
+    let outputs = flipkit::Outputs {
+        gif: args.gif || args.docx || args.preview || !any_other,
+        mp4: args.mp4 || args.pdf,
+    };
+    let rendered = flipkit::render(&loaded, &options, outputs)?;
     let out = args.out.as_deref();
     let write = |path: PathBuf, bytes: &[u8]| -> Result<()> {
         if let Some(dir) = path.parent() {
@@ -64,11 +69,7 @@ fn film(args: &FilmArgs) -> Result<i32> {
         println!("{}  {} KB", path.display(), bytes.len() / 1024);
         Ok(())
     };
-    let any_other = args.mp4 || args.docx || args.pdf;
-    let gif = (args.gif || args.docx || args.preview || !any_other)
-        .then(|| rendered.gif())
-        .transpose()?;
-    if let Some(gif) = &gif {
+    if let Some(gif) = &rendered.gif {
         if args.gif || !any_other {
             write(output_path(file, out, "gif"), gif)?;
         }
@@ -79,17 +80,16 @@ fn film(args: &FilmArgs) -> Result<i32> {
             )?;
         }
     }
-    if args.mp4 || args.pdf {
-        let mp4 = rendered.mp4()?;
+    if let Some(mp4) = &rendered.mp4 {
         if args.mp4 {
-            write(output_path(file, out, "mp4"), &mp4)?;
+            write(output_path(file, out, "mp4"), mp4)?;
         }
         if args.pdf {
             let note =
                 "The film plays in Acrobat when the page opens; other viewers show the still.";
             write(
                 output_path(file, out, "pdf"),
-                &rendered.pdf(&loaded.deck, &mp4, note)?,
+                &rendered.pdf(&loaded.deck, mp4, note)?,
             )?;
         }
     }
@@ -98,7 +98,7 @@ fn film(args: &FilmArgs) -> Result<i32> {
             write(dir.join(format!("card{slide:02}-{n:03}.png")), png)?;
         }
     }
-    if let Some(gif) = gif.as_deref().filter(|_| args.preview) {
+    if let Some(gif) = rendered.gif.as_deref().filter(|_| args.preview) {
         println!("{}", preview(gif)?);
     }
     Ok(0)

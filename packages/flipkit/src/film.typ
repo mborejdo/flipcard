@@ -1,7 +1,9 @@
 // One card of the film: a slide at one instant of one build-in step, drawn in the deck's tokens.
 // Inputs (sys.inputs): card (JSON, see film/mod.rs), theme (JSON: colours and fonts), title (the
-// deck's), index/total, step/steps, frame/frames, width (logical pt; rendered at 2 px/pt), logo
-// (bytes, optional), img<N> (bytes, the pictures and diagrams of this card at this step).
+// deck's), index/total, step/steps, frame/frames, width and height (logical pt; rendered at
+// 2 px/pt), safe (the insets the content stays inside, "top right bottom left" as fractions of
+// the card), logo (bytes, optional), img<N> (bytes, the pictures and diagrams of this card at this
+// step).
 
 #let card = json(bytes(sys.inputs.card))
 #let theme = json(bytes(sys.inputs.theme))
@@ -12,8 +14,10 @@
 #let frame = int(sys.inputs.at("frame", default: "0"))
 #let frames = int(sys.inputs.at("frames", default: "1"))
 #let W = float(sys.inputs.at("width", default: "320"))
-#let H = W * 9 / 16
-#let s = W / 320 // every size below is set for a 320 pt card
+#let H = float(sys.inputs.at("height", default: W * 9 / 16))
+#let tall = H > W
+#let s = W / (if W > H { 320 } else { 360 }) // every size below is set for a 320 pt wide card, 360 pt tall or square
+#let (safe-top, safe-right, safe-bottom, safe-left) = sys.inputs.at("safe", default: "0 0 0 0").split(" ").map(float)
 #let px = 1pt
 
 #let ground = rgb(theme.ground)
@@ -63,7 +67,13 @@
   body
 }).join()
 
-#set page(width: W * px, height: H * px, margin: (x: 24 * s * px, top: 16 * s * px, bottom: 26 * s * px), fill: ground)
+// the card's margins sit inside the safe area
+#set page(width: W * px, height: H * px, margin: (
+  left: safe-left * W * px + 24 * s * px,
+  right: safe-right * W * px + 24 * s * px,
+  top: safe-top * H * px + 16 * s * px,
+  bottom: safe-bottom * H * px + 26 * s * px,
+), fill: ground)
 #set text(font: sans, size: 8.4 * s * px, fill: ink, hyphenate: false, number-type: "lining")
 #set par(leading: 0.55em, spacing: 0.8em, justify: false)
 #set smartquote(enabled: false)
@@ -175,7 +185,7 @@
 #if sys.inputs.at("logo", default: none) != none {
   place(top + left, dy: -8 * s * px, image(sys.inputs.logo, height: 12 * s * px))
 }
-#if card.first {
+#if card.first or tall {
   align(horizon, {
     heading-block
     v(6 * s * px)

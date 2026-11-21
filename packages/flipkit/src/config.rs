@@ -2,7 +2,7 @@
 //!
 //! Precedence, strongest first: a command-line flag, the deck's frontmatter, the closest
 //! `flipcard.toml` (found by walking up from the deck's folder; farther ones are ignored), the
-//! built-in default. An unknown key or a malformed value is an error naming the file.
+//! format's defaults, the built-in default. An unknown key or a malformed value is an error naming the file.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -20,6 +20,10 @@ pub const FILE: &str = "flipcard.toml";
 #[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Settings {
+    /// The aspect: wide, tall or square (wide).
+    pub format: Option<crate::Format>,
+    /// The area the content stays in: none or phone (none; phone for tall).
+    pub safe: Option<crate::Safe>,
     /// Frames per second (10).
     pub fps: Option<u16>,
     /// Width in pixels, even (640).
@@ -36,6 +40,12 @@ pub struct Settings {
     pub pace: Option<f32>,
     /// Colours of the GIF palette (48).
     pub colours: Option<usize>,
+    /// Width of the GIF in pixels, the frame scaled down by a whole factor (the width).
+    #[serde(rename = "gif-width")]
+    pub gif_width: Option<u32>,
+    /// Frames per second of the GIF, every n-th frame of the film (the fps).
+    #[serde(rename = "gif-fps")]
+    pub gif_fps: Option<u16>,
 }
 
 impl Settings {
@@ -43,6 +53,8 @@ impl Settings {
     #[must_use]
     pub fn over(self, under: Self) -> Self {
         Self {
+            format: self.format.or(under.format),
+            safe: self.safe.or(under.safe),
             fps: self.fps.or(under.fps),
             width: self.width.or(under.width),
             hold: self.hold.or(under.hold),
@@ -51,12 +63,14 @@ impl Settings {
             transition: self.transition.or(under.transition),
             pace: self.pace.or(under.pace),
             colours: self.colours.or(under.colours),
+            gif_width: self.gif_width.or(under.gif_width),
+            gif_fps: self.gif_fps.or(under.gif_fps),
         }
     }
 
-    /// Read the film keys of a deck's frontmatter (`fps`, `width`, `hold`, `enter`, `fade`,
-    /// `transition`, `pace`, `colours`); a value that is not a number, or not a transition's
-    /// name, is an error naming the key.
+    /// Read the film keys of a deck's frontmatter (`format`, `safe`, `fps`, `width`, `hold`,
+    /// `enter`, `fade`, `transition`, `pace`, `colours`, `gif-width`, `gif-fps`); a value that is
+    /// not a number, or not one of the key's names, is an error naming the key.
     pub fn from_frontmatter(get: impl Fn(&str) -> Option<String>) -> Result<Self> {
         fn number<T: FromStr>(key: &str, value: Option<String>) -> Result<Option<T>> {
             value
@@ -67,17 +81,27 @@ impl Settings {
                 })
                 .transpose()
         }
+        fn named<T: FromStr<Err = anyhow::Error>>(
+            key: &str,
+            value: Option<String>,
+        ) -> Result<Option<T>> {
+            value
+                .map(|v| v.parse().with_context(|| format!("frontmatter {key}")))
+                .transpose()
+        }
         Ok(Self {
+            format: named("format", get("format"))?,
+            safe: named("safe", get("safe"))?,
             fps: number("fps", get("fps"))?,
             width: number("width", get("width"))?,
             hold: number("hold", get("hold"))?,
             enter: number("enter", get("enter"))?,
             fade: number("fade", get("fade"))?,
-            transition: get("transition")
-                .map(|v| v.parse().context("frontmatter transition"))
-                .transpose()?,
+            transition: named("transition", get("transition"))?,
             pace: number("pace", get("pace"))?,
             colours: number("colours", get("colours"))?,
+            gif_width: number("gif-width", get("gif-width"))?,
+            gif_fps: number("gif-fps", get("gif-fps"))?,
         })
     }
 }
@@ -220,6 +244,8 @@ impl fmt::Display for Config {
         )?;
         let f = &self.film;
         let film: Vec<String> = [
+            ("format", f.format.map(|v| format!("{v:?}").to_lowercase())),
+            ("safe", f.safe.map(|v| format!("{v:?}").to_lowercase())),
             ("fps", f.fps.map(|v| v.to_string())),
             ("width", f.width.map(|v| v.to_string())),
             ("hold", f.hold.map(|v| v.to_string())),
@@ -231,6 +257,8 @@ impl fmt::Display for Config {
             ),
             ("pace", f.pace.map(|v| v.to_string())),
             ("colours", f.colours.map(|v| v.to_string())),
+            ("gif-width", f.gif_width.map(|v| v.to_string())),
+            ("gif-fps", f.gif_fps.map(|v| v.to_string())),
         ]
         .into_iter()
         .filter_map(|(key, value)| Some(format!("{key} = {}", value?)))
@@ -259,13 +287,15 @@ mod tests {
         std::fs::write(root.path().join(FILE), "[film]\nfps = 12\n").expect("write");
         std::fs::write(
             talk.join(FILE),
-            "fonts = [\"fonts\"]\nlogo = \"logo.png\"\n[theme.light]\naccent = \"#2b2459\"\n[film]\nhold = 5\ntransition = \"wipe\"\n",
+            "fonts = [\"fonts\"]\nlogo = \"logo.png\"\n[theme.light]\naccent = \"#2b2459\"\n[film]\nhold = 5\ntransition = \"wipe\"\nformat = \"9:16\"\ngif-fps = 15\n",
         )
         .expect("write");
         let config = Config::load(&talk).expect("load");
         assert_eq!(config.film.hold, Some(5.0));
         assert_eq!(config.film.fps, None, "the farther file is ignored");
         assert_eq!(config.film.transition, Some(filmstrip::Transition::Wipe));
+        assert_eq!(config.film.format, Some(crate::Format::Tall));
+        assert_eq!(config.film.gif_fps, Some(15));
         assert_eq!(config.look.faces, [talk.join("fonts")]);
         assert_eq!(config.look.logo, Some(talk.join("logo.png")));
         assert_ne!(config.look.theme, swatchbook::Theme::default());
@@ -303,5 +333,7 @@ mod tests {
             (Some(12), Some(4.0), Some(0.0))
         );
         assert!(Settings::from_frontmatter(|_| Some("x".into())).is_err());
+        let tall = Settings::from_frontmatter(|key| (key == "format").then(|| "tall".into()));
+        assert_eq!(tall.unwrap().format, Some(crate::Format::Tall));
     }
 }
