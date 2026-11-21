@@ -1,11 +1,13 @@
-//! flipkit: a deck as a film. Every slide is a 16:9 card drawn by Typst in the deck's tokens; every key press of the talk (a `+` bullet, a lit `steps` node) is a build-in step of
-//! its own, with `enter` seconds of animation (bullets appear, marked text underlines itself,
-//! metrics count up, a title lands word by word) and `hold` seconds of rest. The frames go to
-//! `filmstrip`: a GIF, an MP4, a Word file that plays the GIF, a PDF that plays the MP4.
+//! flipkit: a deck as a film. Every slide is a card drawn by Typst in the deck's tokens, wide
+//! (16:9), tall (9:16) or square; every key press of the talk (a `+` bullet, a lit `steps` node)
+//! is a build-in step of its own, with `enter` seconds of animation (bullets appear, marked text
+//! underlines itself, metrics count up, a title lands word by word) and `hold` seconds of rest.
+//! The frames stream to `filmstrip`: a GIF, an MP4, a Word file that plays the GIF, a PDF that
+//! plays the MP4.
 //!
 //! The deck is the presiterm dialect, read by [`deckmark`]. This file is the spine: [`Options`],
-//! [`render`] and the containers; [`config`] reads `flipcard.toml`. The card layout is `film.typ`,
-//! the PDF page `page.typ`, both embedded.
+//! [`render`] and the containers; [`config`] reads `flipcard.toml`, [`format`] the canvas. The
+//! card layout is `film.typ`, the PDF page `page.typ`, both embedded.
 
 // Pixel arithmetic converts between usize, u32 and f32; a card is a few thousand pixels, far
 // inside every range.
@@ -17,42 +19,57 @@
 )]
 
 pub mod config;
+pub mod format;
 
 use std::fmt::Write as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
 use deckmark::deck::{Block, Slide, Span};
 use deckmark::diagram::Assets;
 use deckmark::fragments;
+use filmstrip::Shot;
+use rayon::prelude::*;
 use serde_json::{Value, json};
 use typstkit::{Engine, Input, Main};
 
 pub use config::{Config, Look, Settings};
 pub use deckmark::deck::{Deck, Loaded};
 pub use filmstrip::{Frame, Transition};
+pub use format::{Format, Safe};
 pub use {deckmark, filmstrip};
 
 /// The card layout.
 const CARD: &str = include_str!("film.typ");
 /// The PDF page under the film.
 const PAGE: &str = include_str!("page.typ");
-/// The PDF page (A4 landscape) and where the poster sits on it, in points; page.typ reads them
-/// as inputs so the Screen annotation lands exactly on the poster.
-const PDF_PAGE: (f64, f64) = (841.89, 595.28);
+/// The PDF page (A4, long and short side) and where the poster sits on it, in points; page.typ
+/// reads them as inputs so the Screen annotation lands exactly on the poster. `PDF_FOOT` stays
+/// free under the poster for the title line and the note.
+const A4: (f64, f64) = (841.89, 595.28);
 const PDF_MARGIN: f64 = 34.0;
 const PDF_TOP: f64 = 58.0;
+const PDF_FOOT: f64 = 100.0;
 /// Pixels per logical point: the card is drawn at twice its size for crisp text.
 const SCALE: f32 = 2.0;
 /// Frames each build-in frame stays: 2 at 10 fps is the stop-motion look.
 const TICKS: usize = 2;
+/// Distinct frames drawn side by side before they go to the encoders.
+const CHUNK: usize = 32;
+/// Most Typst engines drawing at once.
+const WORKERS: usize = 8;
 
 /// How the film is timed and sized.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Options {
+    /// The aspect.
+    pub format: Format,
+    /// The area the content stays in.
+    pub safe: Safe,
     /// Frames per second.
     pub fps: u16,
-    /// Width in pixels; the height follows 16:9. Even numbers only (the MP4 needs them).
+    /// Width in pixels; the height follows the format. Even numbers only (the MP4 needs them).
     pub width: u32,
     /// Seconds every card (every step of it) stays, build-in included.
     pub hold: f32,
@@ -67,11 +84,18 @@ pub struct Options {
     pub pace: f32,
     /// Colours of the GIF palette (2 to 255).
     pub colours: usize,
+    /// Width of the GIF: the frame scaled down by the whole factor that keeps at least this.
+    pub gif_width: u32,
+    /// Frames per second of the GIF: every n-th frame of the film, as close to this as whole
+    /// steps allow.
+    pub gif_fps: u16,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Self {
+            format: Format::Wide,
+            safe: Safe::None,
             fps: 10,
             width: 640,
             hold: 7.0,
@@ -80,28 +104,44 @@ impl Default for Options {
             transition: filmstrip::Transition::Fade,
             pace: 200.0,
             colours: 48,
+            gif_width: 640,
+            gif_fps: 10,
         }
     }
 }
 
 impl Options {
     /// Resolve the options: `flags` beat the deck's frontmatter (`source`), which beats the
-    /// config's `[film]` table, which beats the defaults.
+    /// config's `[film]` table, which beats the format's defaults, which beat the built-in ones.
     pub fn resolve(flags: Settings, source: &str, config: &Config) -> Result<Self> {
         let front = colonmark::Frontmatter::read(source);
         let deck = Settings::from_frontmatter(|key| front.get(key).map(str::to_string))?;
         let set = flags.over(deck).over(config.film);
+        let format = set.format.unwrap_or_default();
+        let set = set.over(format.defaults());
         let base = Self::default();
+        let (fps, width) = (set.fps.unwrap_or(base.fps), set.width.unwrap_or(base.width));
         Ok(Self {
-            fps: set.fps.unwrap_or(base.fps),
-            width: set.width.unwrap_or(base.width),
+            format,
+            safe: set.safe.unwrap_or(base.safe),
+            fps,
+            width,
             hold: set.hold.unwrap_or(base.hold),
             enter: set.enter.unwrap_or(base.enter),
             fade: set.fade.unwrap_or(base.fade),
             transition: set.transition.unwrap_or(base.transition),
             pace: set.pace.unwrap_or(base.pace),
             colours: set.colours.unwrap_or(base.colours),
+            gif_width: set.gif_width.unwrap_or(width),
+            gif_fps: set.gif_fps.unwrap_or(fps),
         })
+    }
+
+    /// Height in pixels: the width in the format's aspect, rounded to an even number.
+    #[must_use]
+    pub const fn height(&self) -> u32 {
+        let (w, h) = self.format.aspect();
+        (self.width * h + w) / (2 * w) * 2
     }
 
     /// Seconds a scene with `words` words stays: `hold`, or longer when reading them at `pace`
@@ -114,31 +154,35 @@ impl Options {
     }
 }
 
-/// The frames of a rendered deck.
+/// Which films [`render`] encodes while the frames stream by.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Outputs {
+    /// The animated GIF.
+    pub gif: bool,
+    /// The MP4.
+    pub mp4: bool,
+}
+
+/// A rendered deck: the stills of its scenes and the films asked for.
 #[derive(Clone, Debug)]
 pub struct Rendered {
-    /// Every scene (a slide at a step) as its build-in frames, last frame fully built.
-    pub scenes: Vec<Vec<Frame>>,
+    /// The fully built last frame of every scene (a slide at a step).
+    pub stills: Vec<Frame>,
     /// Which slide each scene shows.
     pub slide_of: Vec<usize>,
     /// Seconds each scene stays.
     pub holds: Vec<f32>,
-    /// The whole film, in order.
-    pub sequence: Vec<Frame>,
+    /// Frames in the film.
+    pub frames: usize,
+    /// The animated GIF, if asked for.
+    pub gif: Option<Vec<u8>>,
+    /// The MP4, if asked for.
+    pub mp4: Option<Vec<u8>>,
     /// The options it was rendered with.
     pub options: Options,
 }
 
 impl Rendered {
-    /// The fully built last frame of every scene.
-    #[must_use]
-    pub fn stills(&self) -> Vec<Frame> {
-        self.scenes
-            .iter()
-            .filter_map(|s| s.last().cloned())
-            .collect()
-    }
-
     /// The still of the first slide's last step: what a viewer sees before the film plays.
     #[must_use]
     pub fn poster(&self) -> Option<Frame> {
@@ -147,32 +191,15 @@ impl Rendered {
             .iter()
             .rposition(|&slide| slide == 0)
             .unwrap_or(0);
-        self.scenes
-            .get(last_of_first)
-            .and_then(|s| s.last().cloned())
-    }
-
-    /// The animated GIF.
-    pub fn gif(&self) -> Result<Vec<u8>> {
-        filmstrip::gif::encode(
-            &self.sequence,
-            &self.stills(),
-            self.options.fps,
-            self.options.colours,
-        )
-    }
-
-    /// The MP4.
-    pub fn mp4(&self) -> Result<Vec<u8>> {
-        filmstrip::video::encode(&self.sequence, self.options.fps)
+        self.stills.get(last_of_first).cloned()
     }
 
     /// Every scene's fully built card as PNG, with the 1-based slide it shows.
     pub fn cards(&self) -> Result<Vec<(usize, Vec<u8>)>> {
-        self.scenes
+        self.stills
             .iter()
             .zip(&self.slide_of)
-            .filter_map(|(scene, slide)| scene.last().map(|still| Ok((slide + 1, still.png()?))))
+            .map(|(still, slide)| Ok((slide + 1, still.png()?)))
             .collect()
     }
 
@@ -196,19 +223,27 @@ impl Rendered {
         filmstrip::docx::wrap(&poster, gif, &links, &style)
     }
 
-    /// The PDF: the poster on an A4 landscape page, the MP4 playing over it on page open.
+    /// The PDF: the poster on an A4 page in the film's orientation, the MP4 playing over it on
+    /// page open. The poster is as wide as the margins allow and as high as the title line
+    /// leaves room for, centred.
     pub fn pdf(&self, deck: &Deck, mp4: &[u8], note: &str) -> Result<Vec<u8>> {
-        let poster = self.poster().context("no frames")?.png()?;
+        let poster = self.poster().context("no frames")?;
+        let ratio = f64::from(poster.height) / f64::from(poster.width);
+        let (page_w, page_h) = if ratio > 1.0 { (A4.1, A4.0) } else { A4 };
+        let full = 2.0_f64.mul_add(-PDF_MARGIN, page_w);
+        let room = page_h - PDF_TOP - PDF_FOOT;
+        let (w, h) = if full * ratio > room {
+            (room / ratio, room)
+        } else {
+            (full, full * ratio)
+        };
+        let left = (full - w).mul_add(0.5, PDF_MARGIN);
+        let png = poster.png()?;
         let theme = theme_json(deck);
         let links = deck.links.join("\n");
-        let w = 2.0_f64.mul_add(-PDF_MARGIN, PDF_PAGE.0);
-        let h = w * 9.0 / 16.0;
-        let geometry = format!(
-            "{} {} {} {} {} {}",
-            PDF_PAGE.0, PDF_PAGE.1, PDF_MARGIN, PDF_TOP, w, h
-        );
+        let geometry = format!("{page_w} {page_h} {left} {PDF_TOP} {w} {h}");
         let inputs = [
-            ("poster", Input::Bytes(&poster)),
+            ("poster", Input::Bytes(&png)),
             ("theme", Input::Text(&theme)),
             ("title", Input::Text(&deck.title)),
             ("author", Input::Text(&deck.author)),
@@ -224,8 +259,8 @@ impl Rendered {
             )
             .context("the PDF page")?;
         let rect = filmstrip::pdf::Rect {
-            x: PDF_MARGIN,
-            y: PDF_PAGE.1 - PDF_TOP - h,
+            x: left,
+            y: page_h - PDF_TOP - h,
             width: w,
             height: h,
         };
@@ -256,78 +291,238 @@ impl std::fmt::Display for Overflow {
     }
 }
 
-/// Render the whole film. A card that overflows is an error naming the slide: nothing is cropped.
-pub fn render(loaded: &Loaded, options: &Options) -> Result<Rendered> {
+/// Render the film and encode the `outputs` asked for. A card that overflows is an error naming
+/// the slide: nothing is cropped.
+///
+/// The stills (the last frame of every scene) and the first frames are drawn first: they are the
+/// edges of the transitions, the cards and the GIF's palette. The rest streams to the encoders
+/// in chunks of distinct frames, drawn side by side; a frame that stays is drawn once.
+pub fn render(loaded: &Loaded, options: &Options, outputs: Outputs) -> Result<Rendered> {
     if !options.width.is_multiple_of(2) || options.width < 64 {
         bail!("film width must be an even number of at least 64 pixels");
     }
-    if options.fps == 0 {
-        bail!("film fps must be at least 1");
+    if options.fps == 0 || options.gif_fps == 0 || options.gif_width == 0 {
+        bail!("film fps, gif-fps and gif-width must be at least 1");
     }
-    let engine = deckmark::faces::engine(&loaded.deck.faces)?;
-    let mut assets = Assets::new(&loaded.base, &loaded.deck);
     let n = ((options.enter * f32::from(options.fps)).round() as usize).max(1);
-    let mut scenes = Vec::new();
-    let mut slide_of = Vec::new();
-    let mut holds = Vec::new();
-    let mut overflows = Vec::new();
+    let mut assets = Assets::new(&loaded.base, &loaded.deck);
+    let logo = logo(&loaded.deck)?;
+    let (mut cards, mut holds) = (Vec::new(), Vec::new());
     for (index, slide) in loaded.deck.slides.iter().enumerate() {
-        let steps = fragments(slide);
-        for step in 0..=steps {
+        for step in 0..=fragments(slide) {
             holds.push(options.hold_for(words(slide, step)));
-            let mut frames = Vec::with_capacity(n);
-            for frame in 0..n {
-                let (raster, pages) = card(
-                    &engine,
-                    &mut assets,
-                    &loaded.deck,
-                    index,
-                    Shot {
-                        step,
-                        frame,
-                        frames: n,
-                    },
-                    options,
-                )?;
-                if pages > 1 && step == steps && frame + 1 == n {
-                    overflows.push(Overflow {
-                        slide: index,
-                        title: slide.title().unwrap_or_default(),
-                        pages,
-                    });
-                }
-                frames.push(raster);
-            }
-            scenes.push(frames);
-            slide_of.push(index);
+            cards.push(Card::new(
+                &loaded.deck,
+                &mut assets,
+                index,
+                step,
+                n,
+                options,
+                logo.as_deref(),
+            )?);
         }
     }
-    if !overflows.is_empty() {
-        let mut message = String::new();
-        for o in &overflows {
-            let _ = writeln!(message, "{o}");
+    let slide_of: Vec<usize> = cards.iter().map(|c| c.slide).collect();
+    let pool = Pool::new(&loaded.deck.faces)?;
+
+    let stills = pool.run(&cards, |engine, card| card.draw(engine, n - 1))?;
+    let mut message = String::new();
+    for (card, (_, pages)) in cards.iter().zip(&stills) {
+        if card.last && *pages > 1 {
+            let _ = writeln!(message, "{}", card.overflow(*pages));
         }
+    }
+    if !message.is_empty() {
         bail!("{}", message.trim_end());
     }
+    let stills: Vec<Arc<Frame>> = stills.into_iter().map(|(f, _)| Arc::new(f)).collect();
+    let firsts = if n == 1 {
+        stills.clone()
+    } else {
+        pool.run(&cards, |engine, card| Ok(Arc::new(card.draw(engine, 0)?.0)))?
+    };
+
     let timing = filmstrip::Timing {
         fps: options.fps,
         fade: options.fade,
         transition: options.transition,
         ticks: TICKS,
     };
-    let takes: Vec<filmstrip::Scene<'_>> = scenes
-        .iter()
-        .zip(&holds)
-        .map(|(frames, &hold)| filmstrip::Scene { frames, hold })
-        .collect();
-    let sequence = filmstrip::sequence(&takes, timing)?;
+    let plan: Vec<(usize, f32)> = holds.iter().map(|&hold| (n, hold)).collect();
+    let shots = filmstrip::shots(&plan, timing)?;
+    let mut film = Film::new(options, outputs, &stills)?;
+    for chunk in runs(&shots).chunks(CHUNK) {
+        let frames = pool.run(chunk, |engine, &(shot, _)| {
+            Ok(match shot {
+                Shot::Card { scene, frame } if frame + 1 == n => Arc::clone(&stills[scene]),
+                Shot::Card { scene, frame: 0 } => Arc::clone(&firsts[scene]),
+                Shot::Card { scene, frame } => Arc::new(cards[scene].draw(engine, frame)?.0),
+                Shot::Between { scene, t } => {
+                    let next = &firsts[(scene + 1) % firsts.len()];
+                    Arc::new(options.transition.frame(&stills[scene], next, t))
+                },
+            })
+        })?;
+        for (frame, &(_, count)) in frames.iter().zip(chunk) {
+            film.push(frame, count)?;
+        }
+    }
+    drop(firsts);
     Ok(Rendered {
-        scenes,
+        stills: stills.into_iter().map(Arc::unwrap_or_clone).collect(),
         slide_of,
         holds,
-        sequence,
+        frames: shots.len(),
+        gif: film.gif.map(filmstrip::gif::Writer::finish).transpose()?,
+        mp4: film.mp4.map(filmstrip::video::Writer::finish).transpose()?,
         options: options.clone(),
     })
+}
+
+/// The shots in runs of the same one, each with how many frames it stays.
+fn runs(shots: &[Shot]) -> Vec<(Shot, usize)> {
+    let mut runs: Vec<(Shot, usize)> = Vec::new();
+    for &shot in shots {
+        match runs.last_mut() {
+            Some((last, count)) if *last == shot => *count += 1,
+            _ => runs.push((shot, 1)),
+        }
+    }
+    runs
+}
+
+/// The encoders the film streams into.
+struct Film {
+    gif: Option<filmstrip::gif::Writer>,
+    mp4: Option<filmstrip::video::Writer>,
+    /// The GIF takes every `every`-th frame, `scale` times smaller.
+    every: usize,
+    scale: u32,
+    /// Frames pushed so far.
+    at: usize,
+}
+
+impl Film {
+    fn new(options: &Options, outputs: Outputs, stills: &[Arc<Frame>]) -> Result<Self> {
+        let Some(first) = stills.first() else {
+            bail!("the deck has no slides");
+        };
+        let scale = (options.width / options.gif_width).max(1);
+        let every = (options.fps / options.gif_fps).max(1);
+        let gif = outputs
+            .gif
+            .then(|| {
+                let keys: Vec<Frame> = stills.iter().map(|f| f.downscale(scale)).collect();
+                let (w, h) = (first.width / scale, first.height / scale);
+                filmstrip::gif::Writer::new(w, h, &keys, options.fps / every, options.colours)
+            })
+            .transpose()?;
+        let mp4 = outputs
+            .mp4
+            .then(|| filmstrip::video::Writer::new(first.width, first.height, options.fps))
+            .transpose()?;
+        Ok(Self {
+            gif,
+            mp4,
+            every: usize::from(every),
+            scale,
+            at: 0,
+        })
+    }
+
+    /// Push `frame` as the next `count` frames.
+    fn push(&mut self, frame: &Frame, count: usize) -> Result<()> {
+        if let Some(mp4) = &mut self.mp4 {
+            for _ in 0..count {
+                mp4.push(frame)?;
+            }
+        }
+        let takes = (self.at..self.at + count)
+            .filter(|i| i % self.every == 0)
+            .count();
+        if let Some(gif) = self.gif.as_mut().filter(|_| takes > 0) {
+            let small = frame.downscale(self.scale);
+            for _ in 0..takes {
+                gif.push(&small)?;
+            }
+        }
+        self.at += count;
+        Ok(())
+    }
+}
+
+/// One Typst engine per worker, as an engine compiles one document at a time.
+struct Pool {
+    threads: rayon::ThreadPool,
+    engines: Vec<Arc<Engine>>,
+}
+
+impl Pool {
+    fn new(faces: &[PathBuf]) -> Result<Self> {
+        let workers = std::thread::available_parallelism()
+            .map_or(1, usize::from)
+            .min(WORKERS);
+        let mut engines = vec![deckmark::faces::engine(faces)?];
+        for _ in 1..workers {
+            engines.push(Arc::new(engine(faces)?));
+        }
+        let threads = rayon::ThreadPoolBuilder::new()
+            .num_threads(workers)
+            .build()?;
+        Ok(Self { threads, engines })
+    }
+
+    /// `job` over `items` side by side, the results in order; the first error in order wins.
+    fn run<T: Sync, R: Send>(
+        &self,
+        items: &[T],
+        job: impl Fn(&Engine, &T) -> Result<R> + Sync,
+    ) -> Result<Vec<R>> {
+        let results: Vec<Result<R>> = self.threads.install(|| {
+            items
+                .par_iter()
+                .map(|item| {
+                    job(
+                        &self.engines[rayon::current_thread_index().unwrap_or(0)],
+                        item,
+                    )
+                })
+                .collect()
+        });
+        results.into_iter().collect()
+    }
+}
+
+/// A new engine with the deck's fonts, loaded as `deckmark::faces::engine` loads them: a file as
+/// it is, a folder by its font files in name order.
+fn engine(faces: &[PathBuf]) -> Result<Engine> {
+    let is_font = |path: &Path| {
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| {
+                ["otf", "ttf", "ttc"]
+                    .iter()
+                    .any(|k| ext.eq_ignore_ascii_case(k))
+            })
+    };
+    let mut builder = Engine::builder();
+    for face in faces {
+        let mut files = vec![face.clone()];
+        if face.is_dir() {
+            files = std::fs::read_dir(face)
+                .with_context(|| format!("fonts: {}", face.display()))?
+                .filter_map(|entry| Some(entry.ok()?.path()))
+                .filter(|path| is_font(path))
+                .collect();
+            files.sort();
+        }
+        for file in files {
+            let bytes =
+                std::fs::read(&file).with_context(|| format!("fonts: {}", file.display()))?;
+            builder = builder.font(bytes);
+        }
+    }
+    Ok(builder.build())
 }
 
 /// The words that come in at `step` of `slide`: at step 0 the heading and everything shown at
@@ -380,98 +575,121 @@ fn words(slide: &Slide, step: usize) -> usize {
 pub fn check(loaded: &Loaded, options: &Options) -> Result<Vec<Overflow>> {
     let engine = deckmark::faces::engine(&loaded.deck.faces)?;
     let mut assets = Assets::new(&loaded.base, &loaded.deck);
+    let logo = logo(&loaded.deck)?;
     let mut overflows = Vec::new();
     for (index, slide) in loaded.deck.slides.iter().enumerate() {
-        let steps = fragments(slide);
-        let (_, pages) = card(
-            &engine,
-            &mut assets,
+        let step = fragments(slide);
+        let card = Card::new(
             &loaded.deck,
+            &mut assets,
             index,
-            Shot {
-                step: steps,
-                frame: 0,
-                frames: 1,
-            },
+            step,
+            1,
             options,
+            logo.as_deref(),
         )?;
+        let (_, pages) = card.draw(&engine, 0)?;
         if pages > 1 {
-            overflows.push(Overflow {
-                slide: index,
-                title: slide.title().unwrap_or_default(),
-                pages,
-            });
+            overflows.push(card.overflow(pages));
         }
     }
     Ok(overflows)
 }
 
-/// One instant of a slide: which key press, which frame of its build-in.
-#[derive(Clone, Copy, Debug)]
-struct Shot {
-    step: usize,
-    frame: usize,
-    frames: usize,
+/// The deck's logo, read once.
+fn logo(deck: &Deck) -> Result<Option<Vec<u8>>> {
+    deck.logo
+        .as_ref()
+        .map(|path| {
+            std::fs::read(path).with_context(|| format!("logo {}: missing image", path.display()))
+        })
+        .transpose()
 }
 
-/// Draw one card; returns the pixels and how many pages the content took (1 = it fits).
-fn card(
-    engine: &Engine,
-    assets: &mut Assets,
-    deck: &Deck,
-    index: usize,
-    shot: Shot,
-    options: &Options,
-) -> Result<(Frame, usize)> {
-    let slide = &deck.slides[index];
-    let (card, media) = card_json(slide, index == 0, shot.step, assets, options)?;
-    let theme = theme_json(deck);
-    let logical = (options.width as f32 / SCALE).round();
-    let logo = match deck.logo.as_ref() {
-        Some(path) => Some(
-            std::fs::read(path)
-                .with_context(|| format!("logo {}: missing image", path.display()))?,
-        ),
-        None => None,
-    };
-    let strings = [
-        ("card", card.to_string()),
-        ("theme", theme),
-        ("title", deck.title.clone()),
-        ("index", index.to_string()),
-        ("total", deck.slides.len().to_string()),
-        ("step", shot.step.to_string()),
-        ("frame", shot.frame.to_string()),
-        ("frames", shot.frames.to_string()),
-        ("width", logical.to_string()),
-    ];
-    let mut inputs: Vec<(&str, Input<'_>)> = strings
-        .iter()
-        .map(|(k, v)| (*k, Input::Text(v.as_str())))
-        .collect();
-    for (key, bytes) in &media {
-        inputs.push((key.as_str(), Input::Bytes(bytes)));
+/// A slide at one step, ready to draw at any frame of its build-in.
+struct Card {
+    /// 0-based slide index.
+    slide: usize,
+    title: String,
+    /// Whether this is the slide's last step, where an overflow counts.
+    last: bool,
+    /// The `sys.inputs` strings, all but `frame`.
+    text: Vec<(&'static str, String)>,
+    /// The pictures, diagrams and logo.
+    bytes: Media,
+}
+
+impl Card {
+    /// Slide `index` of `deck` at `step`, with a build-in of `frames` frames.
+    fn new(
+        deck: &Deck,
+        assets: &mut Assets,
+        index: usize,
+        step: usize,
+        frames: usize,
+        options: &Options,
+        logo: Option<&[u8]>,
+    ) -> Result<Self> {
+        let slide = &deck.slides[index];
+        let (card, mut bytes) = card_json(slide, index == 0, step, assets, options)?;
+        if let Some(logo) = logo {
+            bytes.push(("logo".into(), logo.to_vec()));
+        }
+        let [top, right, bottom, left] = options.safe.insets();
+        let logical = |px: u32| (px as f32 / SCALE).round().to_string();
+        let text = vec![
+            ("card", card.to_string()),
+            ("theme", theme_json(deck)),
+            ("title", deck.title.clone()),
+            ("index", index.to_string()),
+            ("total", deck.slides.len().to_string()),
+            ("step", step.to_string()),
+            ("frames", frames.to_string()),
+            ("width", logical(options.width)),
+            ("height", logical(options.height())),
+            ("safe", format!("{top} {right} {bottom} {left}")),
+        ];
+        Ok(Self {
+            slide: index,
+            title: slide.title().unwrap_or_default(),
+            last: step == fragments(slide),
+            text,
+            bytes,
+        })
     }
-    if let Some(logo) = &logo {
-        inputs.push(("logo", Input::Bytes(logo)));
-    }
-    let raster = engine
-        .raster(Main::Source(CARD), &inputs, 72.0 * SCALE)
-        .with_context(|| {
-            format!(
-                "slide {} ({})",
-                index + 1,
-                slide.title().unwrap_or_default()
+
+    /// Draw build-in frame `frame`; the pixels and how many pages the content took (1 = it fits).
+    fn draw(&self, engine: &Engine, frame: usize) -> Result<(Frame, usize)> {
+        let frame = frame.to_string();
+        let inputs: Vec<(&str, Input<'_>)> = self
+            .text
+            .iter()
+            .map(|(key, value)| (*key, Input::Text(value)))
+            .chain([("frame", Input::Text(&frame))])
+            .chain(
+                self.bytes
+                    .iter()
+                    .map(|(key, b)| (key.as_str(), Input::Bytes(b))),
             )
-        })?;
-    Ok((
-        Frame {
+            .collect();
+        let raster = engine
+            .raster(Main::Source(CARD), &inputs, 72.0 * SCALE)
+            .with_context(|| format!("slide {} ({})", self.slide + 1, self.title))?;
+        let pixels = Frame {
             width: raster.width,
             height: raster.height,
             rgb: raster.rgb,
-        },
-        raster.pages,
-    ))
+        };
+        Ok((pixels, raster.pages))
+    }
+
+    fn overflow(&self, pages: usize) -> Overflow {
+        Overflow {
+            slide: self.slide,
+            title: self.title.clone(),
+            pages,
+        }
+    }
 }
 
 /// The pictures and diagrams of a card as `sys.inputs` entries: key and encoded bytes.
@@ -488,8 +706,8 @@ fn card_json(
     let mut blocks = Vec::new();
     let mut media = Vec::new();
     let mut base = 0usize;
-    // Diagrams are drawn about half a card high; the card is 9/16 of the width.
-    let px_height = (options.width as f32 * 9.0 / 16.0 * 0.5).round() as u32;
+    // Diagrams are drawn about half a card high.
+    let px_height = (options.height() as f32 * 0.5).round() as u32;
     for block in &slide.blocks {
         let value = match block {
             Block::Paragraph(lines) => json!({ "kind": "paragraph", "lines": lines }),
@@ -599,11 +817,18 @@ mod tests {
             hold: 0.5,
             enter: 0.5,
             fade: 0.25,
-            transition: filmstrip::Transition::Fade,
             pace: 0.0,
             colours: 16,
+            gif_width: 128,
+            gif_fps: 4,
+            ..Options::default()
         }
     }
+
+    const BOTH: Outputs = Outputs {
+        gif: true,
+        mp4: true,
+    };
 
     #[test]
     fn a_wordy_scene_is_held_for_its_reading_time_and_a_short_one_for_the_hold() {
@@ -624,7 +849,7 @@ one two three four five six seven eight nine ten
             pace: 60.0, // one word a second
             ..quick()
         };
-        let rendered = render(&loaded, &options).unwrap();
+        let rendered = render(&loaded, &options, Outputs::default()).unwrap();
         // "Short" alone: one word, so the hold; "Long" at step 0: 13 words; step 1: 3 words
         assert_eq!(rendered.holds, vec![2.0, 13.0, 3.0]);
         assert_eq!(words(&loaded.deck.slides[1], 0), 13);
@@ -637,16 +862,16 @@ one two three four five six seven eight nine ten
         let loaded = load(
             "---\ntitle: T\n---\n# One\n\n**bold** and ==marked==\n\n---\n# Two\n\n- a\n+ b\n+ c\n\n:::{metrics}\n1 200 | things\n60 % | share\n:::\n",
         );
-        let rendered = render(&loaded, &quick()).unwrap();
+        let rendered = render(&loaded, &quick(), BOTH).unwrap();
         // slide 1: one scene; slide 2: steps 0, 1, 2
-        assert_eq!(rendered.scenes.len(), 4);
+        assert_eq!(rendered.stills.len(), 4);
         assert_eq!(rendered.slide_of, vec![0, 1, 1, 1]);
-        assert!(rendered.scenes.iter().all(|s| s.len() == 2)); // enter 0.5 s at 4 fps
-        let first = &rendered.sequence[0];
+        let first = &rendered.stills[0];
         assert_eq!((first.width, first.height), (128, 72));
-        assert!(rendered.sequence.len() > 4 * 2);
-        let gif = rendered.gif().unwrap();
-        assert!(gif.starts_with(b"GIF89a"));
+        // per scene: 1 build-in frame for 2 ticks, the still for at least 2, 1 transition frame
+        assert_eq!(rendered.frames, 4 * (2 + 2 + 1));
+        assert!(rendered.gif.unwrap().starts_with(b"GIF89a"));
+        assert_eq!(&rendered.mp4.unwrap()[4..8], b"ftyp");
     }
 
     #[test]
@@ -656,7 +881,7 @@ one two three four five six seven eight nine ten
             let _ = writeln!(source, "- bullet number {i} with some words on it");
         }
         let loaded = load(&source);
-        let error = render(&loaded, &quick()).unwrap_err().to_string();
+        let error = render(&loaded, &quick(), BOTH).unwrap_err().to_string();
         assert!(error.contains("slide 1 (Too much)"), "{error}");
         let found = check(&loaded, &quick()).unwrap();
         assert_eq!(found.len(), 1);
@@ -666,10 +891,41 @@ one two three four five six seven eight nine ten
     #[test]
     fn the_poster_is_the_first_slide_fully_built() {
         let loaded = load("# A\n\n+ one\n+ two\n\n---\n# B\n");
-        let rendered = render(&loaded, &quick()).unwrap();
+        let rendered = render(&loaded, &quick(), Outputs::default()).unwrap();
         assert_eq!(rendered.slide_of, vec![0, 0, 0, 1]);
-        let poster = rendered.poster().unwrap();
-        assert_eq!(poster, *rendered.scenes[2].last().unwrap());
+        assert_eq!(rendered.poster().unwrap(), rendered.stills[2]);
+    }
+
+    #[test]
+    fn a_tall_film_is_portrait_and_its_gif_a_smaller_slower_preview() {
+        let loaded = load("---\nformat: tall\n---\n# Tall\n\n- one\n+ two\n");
+        let flags = Settings {
+            width: Some(128),
+            fps: Some(4),
+            gif_width: Some(64),
+            gif_fps: Some(2),
+            ..Settings::default()
+        };
+        let options = Options::resolve(flags, &loaded.source, &Config::default()).unwrap();
+        assert_eq!((options.format, options.safe), (Format::Tall, Safe::Phone));
+        assert_eq!((options.height(), options.fade), (228, 0.2));
+        let rendered = render(&loaded, &options, BOTH).unwrap();
+        assert_eq!(
+            (rendered.stills[0].width, rendered.stills[0].height),
+            (128, 228)
+        );
+        let gif = rendered.gif.unwrap();
+        let size = |at: usize| u16::from_le_bytes([gif[at], gif[at + 1]]);
+        assert_eq!((size(6), size(8)), (64, 114));
+        assert_eq!(check(&loaded, &options).unwrap(), []);
+    }
+
+    #[test]
+    fn the_same_deck_gives_the_same_bytes() {
+        let loaded = load("# A\n\n- one\n+ two\n\n---\n# B\n\n**bold**\n");
+        let a = render(&loaded, &quick(), BOTH).unwrap();
+        let b = render(&loaded, &quick(), BOTH).unwrap();
+        assert_eq!((a.gif, a.mp4), (b.gif, b.mp4));
     }
 
     #[test]

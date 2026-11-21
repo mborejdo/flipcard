@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 /// What the top of `--help` says.
 const ABOUT: &str = "A Markdown deck in, a flip-card film out
 
-Every slide a 16:9 card drawn by Typst, every key press (a `+` bullet, a lit `steps` node) a \
+Every slide a card drawn by Typst, 16:9, 9:16 or 1:1, every key press (a `+` bullet, a lit `steps` node) a \
 build-in. As a looping GIF, an MP4, a Word file that plays the GIF and a PDF that plays the MP4.";
 
 const ROOT_FOOTER: &str = "\
@@ -20,12 +20,15 @@ Examples:
   flipcard talk/slides.md --preview             play the GIF inline in WezTerm or iTerm2
   flipcard talk/slides.md --width 960 --fps 12 --hold 5 --enter 1.2 --fade 0.3 --pace 160 --colours 64
   flipcard talk/slides.md --transition wipe     or push, pixelize, circle, split, cut
+  flipcard talk/slides.md --format tall --mp4   a 9:16 film for phones, 1080x1920 at 30 fps
+  flipcard talk/slides.md --format tall --safe none --gif-width 270 --gif-fps 10
   flipcard lint talk/slides.md                  does every card fit
   flipcard config talk/slides.md                which flipcard.toml applies, and its values
 
-A build-in is `enter` seconds of animation, then `hold` seconds of rest. Frontmatter (fps, width,
-hold, enter, fade, transition, pace, colours) and `[film]` in flipcard.toml set the same values;
-a flag beats both. Frontmatter `links:` go under the picture in the Word and PDF files. A card
+A build-in is `enter` seconds of animation, then `hold` seconds of rest. Frontmatter (format,
+safe, fps, width, hold, enter, fade, transition, pace, colours, gif-width, gif-fps) and `[film]`
+in flipcard.toml set the same values; a flag beats both, and the format brings its own defaults
+under them. Frontmatter `links:` go under the picture in the Word and PDF files. A card
 that doesn't fit is an error naming the slide; `flipcard lint` finds them all.
 
 Exit codes:
@@ -80,7 +83,7 @@ pub(crate) struct FilmArgs {
     /// Write the MP4 (pure-Rust H.264).
     #[arg(long)]
     pub(crate) mp4: bool,
-    /// Write an A4 landscape Word file: the GIF, the deck's links under it.
+    /// Write an A4 Word file (portrait for tall): the GIF, the deck's links under it.
     #[arg(long)]
     pub(crate) docx: bool,
     /// Write a PDF that plays the MP4 when it opens in Acrobat.
@@ -95,10 +98,18 @@ pub(crate) struct FilmArgs {
     /// Play the GIF inline in WezTerm or iTerm2 after writing.
     #[arg(long)]
     pub(crate) preview: bool,
-    /// Frames per second (--fps 12); default 10.
+    /// The canvas: wide (16:9), tall (9:16) or square (1:1); default wide.
+    #[arg(long, value_name = "NAME")]
+    pub(crate) format: Option<flipkit::Format>,
+    /// The area the content stays in: none or phone (clear of a phone app's bars and buttons);
+    /// default phone for tall, none otherwise.
+    #[arg(long, value_name = "NAME")]
+    pub(crate) safe: Option<flipkit::Safe>,
+    /// Frames per second (--fps 12); default 10, 30 for tall and square.
     #[arg(long, value_name = "N")]
     pub(crate) fps: Option<u16>,
-    /// Width in pixels, even (--width 960); default 640, the height follows 16:9.
+    /// Width in pixels, even (--width 960); default 640, 1080 for tall and square; the height
+    /// follows the format.
     #[arg(long, value_name = "PX")]
     pub(crate) width: Option<u32>,
     /// Seconds every scene stays, build-in included (--hold 5); default 7.
@@ -120,12 +131,22 @@ pub(crate) struct FilmArgs {
     /// Colours of the GIF palette, 2 to 255 (--colours 64); default 48.
     #[arg(long, value_name = "N")]
     pub(crate) colours: Option<usize>,
+    /// Width of the GIF, the film scaled down by a whole factor; default the width, 360 for tall
+    /// and square.
+    #[arg(long, value_name = "PX")]
+    pub(crate) gif_width: Option<u32>,
+    /// Frames per second of the GIF, every n-th frame of the film; default the fps, 15 for tall
+    /// and square.
+    #[arg(long, value_name = "N")]
+    pub(crate) gif_fps: Option<u16>,
 }
 
 impl FilmArgs {
     /// The timing and size flags as settings, to lay over the frontmatter and the config.
     pub(crate) const fn settings(&self) -> flipkit::Settings {
         flipkit::Settings {
+            format: self.format,
+            safe: self.safe,
             fps: self.fps,
             width: self.width,
             hold: self.hold,
@@ -134,6 +155,8 @@ impl FilmArgs {
             transition: self.transition,
             pace: self.pace,
             colours: self.colours,
+            gif_width: self.gif_width,
+            gif_fps: self.gif_fps,
         }
     }
 }
