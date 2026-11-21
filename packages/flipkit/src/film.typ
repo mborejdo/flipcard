@@ -76,12 +76,13 @@
   xs.map(sp => if sp.underline { marked(styled(sp)) } else { styled(sp) }).join()
 }
 
-// the card's margins sit inside the safe area
+// the card's margins sit inside the safe area; a tall card checked for fit (`fit`) keeps a body
+// line clear above the footer
 #set page(width: W * px, height: H * px, margin: (
   left: safe-left * W * px + 24 * s * px,
   right: safe-right * W * px + 24 * s * px,
   top: safe-top * H * px + 16 * s * px,
-  bottom: safe-bottom * H * px + 26 * s * px,
+  bottom: safe-bottom * H * px + 26 * s * px + (if tall and "fit" in sys.inputs { 1.3 * sz(8.4) } else { 0pt }),
 ), fill: ground)
 #set text(font: sans, size: sz(8.4), fill: ink, hyphenate: false, number-type: "lining")
 #set par(leading: 0.55em, spacing: 0.8em, justify: false)

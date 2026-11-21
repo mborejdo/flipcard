@@ -64,12 +64,14 @@ impl Card {
         })
     }
 
-    /// Pages the fully built card takes; 1 when it fits.
+    /// Pages the fully built card takes, a tall one with a body line to spare; 1 when it fits.
     fn pages(&self, engine: &Engine) -> Result<usize> {
         let last = self.frames - 1;
         let number = last.to_string();
+        let mut inputs = self.inputs(last, &number);
+        inputs.push(("fit", Input::Text("1")));
         let document = engine
-            .document_with(Main::Source(CARD), &self.inputs(last, &number))
+            .document_with(Main::Source(CARD), &inputs)
             .with_context(|| format!("slide {} ({})", self.slide + 1, self.title))?;
         Ok(document.pages().len())
     }
@@ -231,6 +233,11 @@ impl<'a> Maker<'a> {
             }
             parts += 1;
         }
+        // as many pages as needed, filled evenly
+        if parts > 0 {
+            let total = len(first);
+            parts = total.div_ceil(total.div_ceil(parts));
+        }
         Ok(cut(first, parts).map(|(head, tail)| {
             let rest = std::iter::once(tail).chain(blocks[1..].iter().cloned());
             (with(vec![head], page.more), with(rest.collect(), true))
@@ -309,6 +316,15 @@ fn moving(
         .length(step, wpm)
         .max(o.hold.map_or(0.0, f64::from));
     (states, frames, ((length * fps).round() / fps) as f32)
+}
+
+/// Items or lines in `block`.
+const fn len(block: &Block) -> usize {
+    match block {
+        Block::List(items) => items.len(),
+        Block::Paragraph(lines) | Block::Quote(lines) => lines.len(),
+        _ => 0,
+    }
 }
 
 /// `block` cut after `n` of its items or lines, both parts non-empty.
@@ -503,6 +519,11 @@ mod tests {
                 .all(|p| p.slide.heading == loaded.deck.slides[0].heading)
         );
         assert_eq!(pages.iter().filter(|p| p.more).count(), pages.len() - 1);
+        let sizes: Vec<usize> = pages.iter().map(|p| len(&p.slide.blocks[0])).collect();
+        assert!(
+            sizes.iter().max().unwrap() - sizes.iter().min().unwrap() <= 1,
+            "{sizes:?}"
+        );
         let lines: Vec<String> = (1..=60).map(|i| format!("let x{i} = {i};")).collect();
         let (loaded, options) = tall(&format!("# Code\n\n```rust\n{}\n```\n", lines.join("\n")));
         let overflows = crate::check(&loaded, &options).unwrap();
