@@ -1,0 +1,211 @@
+//! The command line: `Cli`, `Command` and the `--help` texts.
+
+use std::path::PathBuf;
+
+use clap::{Parser, Subcommand};
+
+/// What the top of `--help` says.
+const ABOUT: &str = "A Markdown script in, a flip-card film out
+
+Every slide is a 16:9 card drawn by Typst; every key press of the deck (a `+` bullet, a lit \
+`steps` node) is a build-in of its own. Out come an animated GIF, an MP4, a Word file that plays \
+the GIF and a PDF that plays the MP4.";
+
+const ROOT_FOOTER: &str = "\
+Examples:
+  flipcard talk/slides.md                       talk/slides.gif
+  flipcard talk/slides.md --gif --mp4 --docx --pdf
+                                                all four: the GIF, the MP4, a Word file that plays the GIF, a PDF that plays the MP4
+  flipcard talk/slides.md --out dist            write into dist/ instead of next to the deck
+  flipcard talk/slides.md --cards dist/cards    every card, fully built, as PNG (card03-007.png: slide 3, scene 7)
+  flipcard talk/slides.md --preview             play the GIF inline in WezTerm or iTerm2
+  flipcard talk/slides.md --width 960 --fps 12 --hold 5 --enter 1.2 --fade 0.3 --pace 160 --colours 64
+  flipcard talk/slides.md --transition wipe     wipe instead of fade (or push, pixelize, circle, split, cut)
+  flipcard lint talk/slides.md                  does every card fit
+  flipcard config talk/slides.md                which flipcard.toml applies, and its values
+
+Every key press is a build-in: `enter` seconds of animation, then `hold` seconds of rest. The
+deck's frontmatter (fps, width, hold, enter, fade, transition, pace, colours) and a `[film]` table
+in flipcard.toml set the same values; a flag typed here beats both. `links:` in the frontmatter go
+under the picture in the Word and PDF editions. A card that does not fit is an error naming the
+slide; `flipcard lint` finds them all first.
+
+Exit codes:
+  0  written
+  2  a card overflows, a file cannot be drawn or written (the reason is the one line on stderr)";
+
+const LINT_FOOTER: &str = "\
+Examples:
+  flipcard lint talk/slides.md       one line per card that overflows
+
+Exit codes:
+  0  every card fits
+  1  at least one card overflows
+  2  the deck could not be read or drawn";
+
+const CONFIG_FOOTER: &str = "\
+Examples:
+  flipcard config                    look up from the current folder
+  flipcard config talk/slides.md     look up from the deck's folder
+
+The closest flipcard.toml from the deck's folder up wins; farther ones are ignored.
+
+Exit codes:
+  0  printed
+  2  the file cannot be read, has an unknown key or a malformed value";
+
+/// The `flipcard` command line: a deck to render, or a subcommand.
+#[derive(Parser)]
+#[command(
+    name = "flipcard",
+    version,
+    about = ABOUT,
+    after_help = ROOT_FOOTER,
+    args_conflicts_with_subcommands = true
+)]
+pub(crate) struct Cli {
+    #[command(flatten)]
+    pub(crate) film: FilmArgs,
+    #[command(subcommand)]
+    pub(crate) command: Option<Command>,
+}
+
+/// The flags of a render.
+#[derive(clap::Args)]
+#[allow(clippy::struct_excessive_bools, reason = "independent output switches")]
+pub(crate) struct FilmArgs {
+    /// The deck, e.g. talk/slides.md.
+    pub(crate) file: Option<PathBuf>,
+    /// Write the animated GIF (the default when no format is given).
+    #[arg(long)]
+    pub(crate) gif: bool,
+    /// Write the MP4 (pure-Rust H.264).
+    #[arg(long)]
+    pub(crate) mp4: bool,
+    /// Write an A4 landscape Word file with the GIF and the deck's links under it.
+    #[arg(long)]
+    pub(crate) docx: bool,
+    /// Write a PDF whose page plays the MP4 when it opens in Acrobat.
+    #[arg(long)]
+    pub(crate) pdf: bool,
+    /// Also write every card, fully built, as PNG into this folder (--cards dist/cards).
+    #[arg(long, value_name = "DIR")]
+    pub(crate) cards: Option<PathBuf>,
+    /// Write into this folder instead of next to the deck (--out dist).
+    #[arg(long, value_name = "DIR")]
+    pub(crate) out: Option<PathBuf>,
+    /// Play the GIF inline in WezTerm or iTerm2 after writing.
+    #[arg(long)]
+    pub(crate) preview: bool,
+    /// Frames per second (--fps 12); default 10.
+    #[arg(long, value_name = "N")]
+    pub(crate) fps: Option<u16>,
+    /// Width in pixels, even (--width 960); default 640, the height follows 16:9.
+    #[arg(long, value_name = "PX")]
+    pub(crate) width: Option<u32>,
+    /// Seconds every scene stays, build-in included (--hold 5); default 7.
+    #[arg(long, value_name = "S")]
+    pub(crate) hold: Option<f32>,
+    /// Seconds of build-in at the start of every scene (--enter 1.2); default 1.6.
+    #[arg(long, value_name = "S")]
+    pub(crate) enter: Option<f32>,
+    /// Seconds a transition between scenes takes (--fade 0.3); default 0.4.
+    #[arg(long, value_name = "S")]
+    pub(crate) fade: Option<f32>,
+    /// How one scene gives way to the next: fade, wipe, push, pixelize, circle, split or cut
+    /// (--transition wipe); default fade.
+    #[arg(long, value_name = "NAME")]
+    pub(crate) transition: Option<flipkit::Transition>,
+    /// Words per minute a wordy scene is held for, 0 for a fixed hold (--pace 160); default 200.
+    #[arg(long, value_name = "WPM")]
+    pub(crate) pace: Option<f32>,
+    /// Colours of the GIF palette, 2 to 255 (--colours 64); default 48.
+    #[arg(long, value_name = "N")]
+    pub(crate) colours: Option<usize>,
+}
+
+impl FilmArgs {
+    /// The timing and size flags as settings, to lay over the frontmatter and the config.
+    pub(crate) const fn settings(&self) -> flipkit::Settings {
+        flipkit::Settings {
+            fps: self.fps,
+            width: self.width,
+            hold: self.hold,
+            enter: self.enter,
+            fade: self.fade,
+            transition: self.transition,
+            pace: self.pace,
+            colours: self.colours,
+        }
+    }
+}
+
+/// The subcommands.
+#[derive(Subcommand)]
+pub(crate) enum Command {
+    /// Draw every card fully built and report the ones that overflow.
+    #[command(after_help = LINT_FOOTER)]
+    Lint {
+        /// The deck, e.g. talk/slides.md.
+        file: PathBuf,
+    },
+    /// Show which flipcard.toml applies and its values.
+    #[command(after_help = CONFIG_FOOTER)]
+    Config {
+        /// A deck (or its folder) to look up from; default: the current folder.
+        path: Option<PathBuf>,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::CommandFactory;
+
+    use super::*;
+
+    fn help_of(command: &clap::Command) -> String {
+        command.clone().render_long_help().to_string()
+    }
+
+    #[test]
+    fn cli_definition_is_consistent() {
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn every_help_has_examples_and_exit_codes_in_keyboard_characters() {
+        let root = Cli::command();
+        let mut commands = vec![root.clone()];
+        commands.extend(
+            root.get_subcommands()
+                .filter(|c| c.get_name() != "help")
+                .cloned(),
+        );
+        for command in commands {
+            let help = help_of(&command);
+            assert!(help.contains("Examples:"), "{}", command.get_name());
+            assert!(help.contains("Exit codes:"), "{}", command.get_name());
+            assert!(help.is_ascii(), "{}", command.get_name());
+        }
+    }
+
+    #[test]
+    fn every_flag_has_an_example() {
+        let root = Cli::command();
+        let help = help_of(&root);
+        for arg in root.get_arguments() {
+            let Some(long) = arg.get_long().filter(|l| !matches!(*l, "help" | "version")) else {
+                continue;
+            };
+            let flag = format!("--{long}");
+            let in_flag_help = arg
+                .get_help()
+                .is_some_and(|h| h.to_string().contains(&flag));
+            let in_footer = help
+                .lines()
+                .filter(|l| l.trim_start().starts_with("flipcard "))
+                .any(|l| l.contains(&flag));
+            assert!(in_flag_help || in_footer, "{flag} has no example");
+        }
+    }
+}

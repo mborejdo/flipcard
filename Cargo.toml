@@ -3,7 +3,7 @@
 # MP4.
 [workspace]
 resolver = "3"
-members = ["packages/filmstrip", "packages/flipkit"]
+members = ["apps/flipcard", "packages/filmstrip", "packages/flipkit"]
 
 [workspace.package]
 version = "0.1.0"
