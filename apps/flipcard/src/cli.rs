@@ -5,34 +5,32 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 /// What the top of `--help` says.
-const ABOUT: &str = "A Markdown script in, a flip-card film out
+const ABOUT: &str = "A Markdown deck in, a flip-card film out
 
-Every slide is a 16:9 card drawn by Typst; every key press of the deck (a `+` bullet, a lit \
-`steps` node) is a build-in of its own. Out come an animated GIF, an MP4, a Word file that plays \
-the GIF and a PDF that plays the MP4.";
+Every slide a 16:9 card drawn by Typst, every key press (a `+` bullet, a lit `steps` node) a \
+build-in. As a looping GIF, an MP4, a Word file that plays the GIF and a PDF that plays the MP4.";
 
 const ROOT_FOOTER: &str = "\
 Examples:
   flipcard talk/slides.md                       talk/slides.gif
   flipcard talk/slides.md --gif --mp4 --docx --pdf
-                                                all four: the GIF, the MP4, a Word file that plays the GIF, a PDF that plays the MP4
-  flipcard talk/slides.md --out dist            write into dist/ instead of next to the deck
-  flipcard talk/slides.md --cards dist/cards    every card, fully built, as PNG (card03-007.png: slide 3, scene 7)
+                                                all four
+  flipcard talk/slides.md --out dist            into dist/ instead of next to the deck
+  flipcard talk/slides.md --cards dist/cards    every card fully built as PNG (card03-007.png: slide 3, scene 7)
   flipcard talk/slides.md --preview             play the GIF inline in WezTerm or iTerm2
   flipcard talk/slides.md --width 960 --fps 12 --hold 5 --enter 1.2 --fade 0.3 --pace 160 --colours 64
-  flipcard talk/slides.md --transition wipe     wipe instead of fade (or push, pixelize, circle, split, cut)
+  flipcard talk/slides.md --transition wipe     or push, pixelize, circle, split, cut
   flipcard lint talk/slides.md                  does every card fit
   flipcard config talk/slides.md                which flipcard.toml applies, and its values
 
-Every key press is a build-in: `enter` seconds of animation, then `hold` seconds of rest. The
-deck's frontmatter (fps, width, hold, enter, fade, transition, pace, colours) and a `[film]` table
-in flipcard.toml set the same values; a flag typed here beats both. `links:` in the frontmatter go
-under the picture in the Word and PDF editions. A card that does not fit is an error naming the
-slide; `flipcard lint` finds them all first.
+A build-in is `enter` seconds of animation, then `hold` seconds of rest. Frontmatter (fps, width,
+hold, enter, fade, transition, pace, colours) and `[film]` in flipcard.toml set the same values;
+a flag beats both. Frontmatter `links:` go under the picture in the Word and PDF files. A card
+that doesn't fit is an error naming the slide; `flipcard lint` finds them all.
 
 Exit codes:
   0  written
-  2  a card overflows, a file cannot be drawn or written (the reason is the one line on stderr)";
+  2  a card overflows, a file can't be drawn or written (reason: one line on stderr)";
 
 const LINT_FOOTER: &str = "\
 Examples:
@@ -41,18 +39,18 @@ Examples:
 Exit codes:
   0  every card fits
   1  at least one card overflows
-  2  the deck could not be read or drawn";
+  2  the deck can't be read or drawn";
 
 const CONFIG_FOOTER: &str = "\
 Examples:
   flipcard config                    look up from the current folder
   flipcard config talk/slides.md     look up from the deck's folder
 
-The closest flipcard.toml from the deck's folder up wins; farther ones are ignored.
+The closest flipcard.toml from the deck's folder up wins, farther ones are ignored.
 
 Exit codes:
   0  printed
-  2  the file cannot be read, has an unknown key or a malformed value";
+  2  the file can't be read, has an unknown key or a malformed value";
 
 /// The `flipcard` command line: a deck to render, or a subcommand.
 #[derive(Parser)]
@@ -82,13 +80,13 @@ pub(crate) struct FilmArgs {
     /// Write the MP4 (pure-Rust H.264).
     #[arg(long)]
     pub(crate) mp4: bool,
-    /// Write an A4 landscape Word file with the GIF and the deck's links under it.
+    /// Write an A4 landscape Word file: the GIF, the deck's links under it.
     #[arg(long)]
     pub(crate) docx: bool,
-    /// Write a PDF whose page plays the MP4 when it opens in Acrobat.
+    /// Write a PDF that plays the MP4 when it opens in Acrobat.
     #[arg(long)]
     pub(crate) pdf: bool,
-    /// Also write every card, fully built, as PNG into this folder (--cards dist/cards).
+    /// Also write every card, fully built, as PNG here (--cards dist/cards).
     #[arg(long, value_name = "DIR")]
     pub(crate) cards: Option<PathBuf>,
     /// Write into this folder instead of next to the deck (--out dist).

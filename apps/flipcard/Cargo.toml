@@ -1,6 +1,6 @@
 [package]
 name = "flipcard"
-description = "A Markdown script in, a flip-card film out: GIF, MP4, a Word file that plays the GIF, a PDF that plays the MP4."
+description = "A Markdown deck in, a flip-card film out: GIF, MP4, a Word file that plays the GIF, a PDF that plays the MP4."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

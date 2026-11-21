@@ -9,17 +9,16 @@ flipcard talk/slides.md --preview            # play the GIF inline in WezTerm or
 flipcard lint talk/slides.md                 # which cards do not fit
 ```
 
-A deck in the presiterm dialect renders as a film: every slide is a 16:9 card in the
-deck's tokens (the `[theme]` table, `theme: light`), drawn in-process by Typst, no browser.
-Every key press of the talk is a build-in step of the film:
+A presiterm deck renders as a film: every slide a 16:9 card in the deck's tokens (`[theme]`,
+`theme: light`), drawn in process by Typst. Every key press is a build-in:
 
 | in the deck | in the film |
 |:--|:--|
 | a key press (a `+` bullet, a lit `steps` node) | one scene: `enter` seconds of build-in, then `hold` seconds of rest |
 | `-` bullets shown at once | appear one after the other during the build-in |
-| `==marked==` and `__marked__` | an underline in the accent colour that grows from the left |
+| `==marked==` and `__marked__` | an accent underline that grows from the left |
 | the first slide, or a heading alone | the heading lands word by word |
-| a `steps` diagram, mermaid or Typst | the node of the step lights up |
+| a `steps` diagram, mermaid or Typst | the step's node lights up |
 | `:::{metrics}` | the numbers count up from zero |
 | a picture, a table, a code block | drawn in the card |
 | `:::{notes}` | never in the film |
@@ -27,44 +26,39 @@ Every key press of the talk is a build-in step of the film:
 
 ## Files
 
-* `slides.gif`: one palette learned from the stills, only the pixels that change are stored, so
-  a film of text cards is small (a 14-card film at 640 px is about 1 MB). Loops.
-* `slides.mp4` (`--mp4`): H.264, pure Rust. Same frames.
-* `slides.docx` (`--docx`): an A4 landscape Word file whose only content is the GIF and a line
-  of links under it. Word for Mac and current Word for Windows play the GIF in place.
-* `slides.pdf` (`--pdf`): the first card as a poster on an A4 landscape page with the title line
-  and the links; Acrobat plays the MP4 over it when the page opens and loops it. Other viewers
-  show the poster.
-* `--cards DIR`: every scene's fully built card as `card03-007.png` (slide 3, scene 7), to look
-  at the cards without opening anything.
+* `slides.gif`: one learned palette, only changed pixels stored (14 cards at 640 px: about
+  1 MB). Loops.
+* `slides.mp4` (`--mp4`): H.264, pure Rust, same frames.
+* `slides.docx` (`--docx`): A4 landscape, the GIF and a line of links. Word for Mac and current
+  Word for Windows play the GIF in place.
+* `slides.pdf` (`--pdf`): A4 landscape, the first card as poster, title line and links. Acrobat
+  plays and loops the MP4 over it on open; other viewers show the poster.
+* `--cards DIR`: every scene's fully built card as `card03-007.png` (slide 3, scene 7).
 
 ## Timing and size
 
-Eight values, each a flag, a frontmatter key or a `[film]` key in `flipcard.toml`; a flag beats
-the frontmatter, which beats the file:
+Each value is a flag, a frontmatter key or a `[film]` key in `flipcard.toml`. Flag beats
+frontmatter beats file.
 
 | value | flag | default | what |
 |:--|:--|--:|:--|
 | fps | `--fps` | 10 | frames per second |
-| width | `--width` | 640 | pixels; the height follows 16:9; even numbers only (the MP4 needs them) |
+| width | `--width` | 640 | pixels, even (the MP4 needs it); height follows 16:9 |
 | hold | `--hold` | 7 | seconds every scene stays, build-in included |
 | enter | `--enter` | 1.6 | seconds of build-in at the start of every scene |
 | fade | `--fade` | 0.4 | seconds a transition between scenes takes |
-| transition | `--transition` | fade | how one scene gives way to the next: `fade`, `wipe`, `push`, `pixelize`, `circle`, `split` or `cut` |
+| transition | `--transition` | fade | `fade`, `wipe`, `push`, `pixelize`, `circle`, `split` or `cut` |
 | pace | `--pace` | 200 | words per minute; a scene with more words than `hold` covers stays longer |
 | colours | `--colours` | 48 | colours of the GIF palette, 2 to 255 |
 
-`hold` is the least a scene stays. A scene that brings more words than that covers at `pace`
-(the heading and everything shown at once on the first step, the bullet of a `+` step after)
-stays as long as reading them takes, so a wordy card is not cut short and a title card does not
-linger. `pace: 0` holds every scene for exactly `hold`.
+`hold` is the minimum: a scene with more words than `hold` covers at `pace` (first step: the
+heading and all shown at once; then each `+` bullet) stays for its reading time. `pace: 0` holds
+every scene for exactly `hold`.
 
-The transitions are drawn frame by frame on the CPU and chosen to read at 10 fps, where a `fade`
-of 0.4 seconds is four frames: `wipe` brings the next scene in from the left, `push` shoves the
-current one out to the left, `pixelize` breaks the scene into blocks that grow and sharpen into
-the next, `circle` opens the next scene from the centre, `split` opens it from the centre line
-outwards like barn doors, `cut` has no frames between at all. One transition for the whole film;
-`fade` sets how long it takes, a cut takes none.
+Transitions are CPU-drawn to read at 10 fps (a 0.4 s `fade` is four frames). `wipe` comes in
+from the left, `push` shoves the current scene out to the left, `pixelize` breaks it into blocks
+that sharpen into the next, `circle` opens from the centre, `split` from the centre line like
+barn doors, `cut` has no frames between. One transition per film; `fade` sets its length.
 
 ```markdown
 ---
@@ -81,19 +75,18 @@ width = 960
 fps = 12
 ```
 
-`links:` are comma-separated URLs; the Word and PDF editions show them under the picture, the
+`links:` are comma-separated URLs, shown under the picture in the Word and PDF editions with the
 scheme (`https://`, `mailto:`) stripped from the label.
 
 ## Fitting
 
-A card that does not fit is never cropped: `flipcard` stops with
-`slide 4 (The chain): the card overflows onto 2 pages; trim it`, and `flipcard lint` reports
-every such card. Fewer words, a smaller picture (`{h=5}`), or a second
-slide.
+A card that doesn't fit is never cropped: `flipcard` stops with
+`slide 4 (The chain): the card overflows onto 2 pages; trim it`, and `flipcard lint` lists every
+such card. Fix: fewer words, a smaller picture (`{h=5}`), or a second slide.
 
 ## Fonts
 
-The cards use the theme's `sans` for text, `display` for headings (in the heaviest weight the
-family has, so a Black face lands there when you bring one) and `mono` for code and the footer
-(`[theme.fonts]` in flipcard.toml). Inter and Fira Code are built in; other families come from
-font files the config names (`fonts = ["fonts"]`).
+Text in the theme's `sans`, headings in `display` (its heaviest weight, so a Black face lands
+there if you bring one), code and footer in `mono` (`[theme.fonts]` in flipcard.toml). Inter and
+Fira Code are built in; other families come from the font files the config names
+(`fonts = ["fonts"]`).

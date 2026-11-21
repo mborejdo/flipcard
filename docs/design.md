@@ -1,18 +1,16 @@
 # The film: a deck as GIF, MP4, DOCX and PDF
 
-Since 21.11.2026 the film is flipcard, its own repo: `flipkit` is the film below (on
-`deckmark`, presiterm's deck model as a package), `flipcard` the command line. The note is kept
-as it was written.
+Design note, 06.11.2026, built the same day as `presiterm film`. Since 21.11.2026 the film is
+flipcard: `flipkit` the film (on `deckmark`, presiterm's deck model as a package), `flipcard` the
+command line. Names below are as written then.
 
-Design note, 06.11.2026, built the same day (`presiterm film`, `packages/filmstrip`,
-`presiterm handbook film`). `presiterm film` renders a deck to files that play on their own: a
-looping GIF for a README or a chat, an MP4 for a post, a Word file for a mail attachment, a PDF
-that starts the film when the page opens in Acrobat. Every key press of the talk becomes a
-build-in of the film.
+The film renders a deck to files that play on their own: a looping GIF for a README or a chat,
+an MP4 for a post, a Word file for a mail, a PDF that starts the film when it opens in Acrobat.
+Every key press of the talk is a build-in.
 
 ## Why in presiterm
 
-presiterm already owns everything the film needs except the encoders:
+presiterm had everything but the encoders:
 
 | need | presiterm has |
 |---|---|
@@ -21,42 +19,39 @@ presiterm already owns everything the film needs except the encoders:
 | drawing without a browser | `typstkit`: in-process Typst to PNG |
 | lint before export | `presiterm lint` |
 
-One deck format, two outputs: the live terminal presentation and a rendered film of the same
-file. Fits the design decisions: pure Rust, no program started at all for the export, no
-fallbacks (a card that overflows is a lint error, not a cropped frame), help with examples, the
-same tokens.
+One deck, two outputs, same rules: pure Rust, no program started, no fallbacks (an overflowing
+card is a lint error, not a cropped frame), help with examples, the same tokens.
 
 ## Shape
 
-### Crate `filmstrip` (`packages/filmstrip`)
+### `filmstrip` (`packages/filmstrip`)
 
-Frames in, files out. Knows nothing about Markdown or Typst.
+Frames in, files out; knows nothing about Markdown or Typst.
 
 - `Frame { width, height, rgb }`, `Frame::png()`.
-- `Timing { fps, fade, transition, ticks }`, `Scene { frames, hold }` and `sequence(scenes,
-  timing) -> Vec<Frame>`: every scene's build-in frames, its own hold on the last one, a
-  `Transition` into the next scene (fade, wipe, push, pixelize, circle, split, cut: CPU-drawn,
+- `sequence(scenes, timing) -> Vec<Frame>` with `Timing { fps, fade, transition, ticks }` and
+  `Scene { frames, hold }`: each scene's build-in, its own hold on the last frame, a
+  `Transition` into the next (fade, wipe, push, pixelize, circle, split, cut; CPU-drawn,
   readable at 10 fps).
-- `gif::encode(frames, keyframes, fps, colours)`: one NeuQuant palette learned from the keyframes
-  plus a transparent slot, delta frames (the changed rectangle only, unchanged pixels
-  transparent), long holds split into legal delays. This is what keeps a 14-card film near 1 MB.
-- `video::encode(frames, fps)` (feature `mp4`): H.264 through `rusty_h264-encoder`, boxed by `mp4`, no B-frames.
-- `docx::wrap(poster, gif, links)`: an A4 landscape Word file with the GIF as its only picture and
-  a line of links under it (docx-rs, then a zip pass that swaps the PNG part for the GIF). Word
-  plays the GIF in place.
+- `gif::encode(frames, keyframes, fps, colours)`: one NeuQuant palette from the keyframes plus a
+  transparent slot, delta frames (changed rectangle only), long holds split into legal delays.
+  Keeps a 14-card film near 1 MB.
+- `video::encode(frames, fps)` (feature `mp4`): H.264 via `rusty_h264-encoder`, boxed by `mp4`,
+  no B-frames.
+- `docx::wrap(poster, gif, links)`: A4 landscape, the GIF as only picture, links under it
+  (docx-rs, then a zip pass swaps the PNG part for the GIF). Word plays the GIF in place.
 - `pdf::embed(page, mp4, name)`: a Screen annotation with a Rendition action over the poster,
-  fired on page open; Acrobat plays and loops, other viewers show the poster (lopdf).
+  fired on page open (lopdf). Acrobat plays and loops, other viewers show the poster.
 
-Features: `gif` (default), `mp4`, `docx`, `pdf`; each pulls only its encoder. Tests: the GIF's
-frame count and delays, the MP4's sample table, the DOCX parts and relationships, the PDF's
-annotation, all with the crate's own readers or a few lines of box parsing.
+Features `gif` (default), `mp4`, `docx`, `pdf`, each pulls only its encoder. Tests per
+container (GIF frames and delays, MP4 sample table, DOCX parts and relationships, PDF
+annotation), read back with the crate's own readers or a few lines of box parsing.
 
 ### `typstkit::Engine::raster`
 
-`png()` compiles without inputs and encodes. The film needs the pixels of a compile with
-`sys.inputs` (slide, step, frame), so: one new method returning width, height and RGB bytes;
-`png()` becomes a wrapper. Pictures reach Typst by path under the engine's root, as they do for
-diagrams today.
+The film needs the pixels of a compile with `sys.inputs` (slide, step, frame): a new method
+returns width, height and RGB bytes, `png()` wraps it. Pictures reach Typst by path under the
+engine's root, as for diagrams.
 
 ### `presiterm film` (feature `film`, needs `typst`)
 
@@ -65,18 +60,15 @@ diagrams today.
     presiterm film talk/slides.md --cards out/    every card and build-in sample as PNG
     presiterm film talk/slides.md --preview       play the GIF inline in this WezTerm
 
-A Typst layout embedded in the binary draws one slide at one build-in instant. Inputs: the slide
-as JSON (`deck::Slide` serialised), `index`/`total`, `step`/`steps`, `frame`/`frames`, the
-tokens as colours, the width. The look mirrors the terminal: heading in accent with its rule,
-body from the left margin, footer with the title and `n / N`, the corner logo; the deck's
-`theme:` picks the palette and the `[theme]` overlay applies.
-
-How the deck's semantics become motion:
+An embedded Typst layout draws one slide at one build-in instant from the slide as JSON
+(`deck::Slide`), `index`/`total`, `step`/`steps`, `frame`/`frames`, the token colours and the
+width. It mirrors the terminal: accent heading with its rule, body from the left margin, footer
+with title and `n / N`, corner logo; `theme:` picks the palette, `[theme]` applies.
 
 | in the terminal | in the film |
 |---|---|
 | a key press (a `+` bullet, a lit `steps` node) | one build-in step: `enter` seconds of animation, then `hold` |
-| `- ` bullets shown at once | appear one by one along the ease curve of the step |
+| `- ` bullets shown at once | appear one by one along the step's ease curve |
 | `==marked==` / `__marked__` | the underline grows from left to right |
 | a title slide | the heading lands word by word |
 | a mermaid diagram with `steps` | drawn per step by the existing renderer, placed as a picture |
@@ -85,25 +77,21 @@ How the deck's semantics become motion:
 | `:::{notes}` | never in the film |
 | `{only}` tags | the same `--tags` as the window |
 
-Timing lives in `presiterm.toml` (`[film] fps = 10, width = 640, hold = 7, enter = 1.6,
-fade = 0.4, transition = "fade", pace = 200, colours = 48`) and in the frontmatter with the same
-keys; a flag beats both, as everywhere. `hold` is the least a scene stays; a scene with more words
-than that covers at `pace` words per minute stays for its reading time. `presiterm lint --film`
-checks every slide at the film's geometry (a card that overflows is an error, with the rows that
-do not fit).
+Timing: `[film] fps = 10, width = 640, hold = 7, enter = 1.6, fade = 0.4, transition = "fade",
+pace = 200, colours = 48` in `presiterm.toml`, same keys in the frontmatter, a flag beats both.
+`hold` is the minimum; a scene with more words than that covers at `pace` words per minute stays
+for its reading time. `presiterm lint --film` checks every slide at the film's geometry and
+names the rows that overflow.
 
-The plan had two new directives, because talks want them and the film gives them motion:
-`:::{metrics}` with `value | label` lines (big numbers in a row; the window draws them large, the
-film counts them up) and `:::{columns}` for a picture beside text. `metrics` was built;
-`columns` was left out (see below).
+Planned directives, as talks want them and the film gives them motion: `:::{metrics}` (`value |
+label` lines, big numbers in a row, counted up in the film) and `:::{columns}` (a picture beside
+text). Only `metrics` was built.
 
 ## What was built
 
-`filmstrip` with tests per container; `typstkit::Engine::raster` and `Input::Bytes`; the card
-layout (`apps/presiterm/src/film/film.typ`) and the PDF page; `presiterm film` with
-`--gif --mp4 --docx --pdf --cards --out --preview` and the eight timing flags; `presiterm lint
---film`; the `[film]` table and the frontmatter keys; `links:`; the `metrics` directive in the
-dialect, the window and the film; `examples/film`, rendered by `cargo xtask demo`.
+All of the above, plus `Input::Bytes`, the card layout (`apps/presiterm/src/film/film.typ`) and
+the PDF page, `--out` and the eight timing flags, `links:`, `presiterm handbook film`, `metrics`
+in dialect, window and film, and `examples/film`, rendered by `cargo xtask demo`.
 
-Left out on purpose: a `columns` directive (a picture above its text does the job), per-element
-timing in the Markdown, audio, a transition per slide, GPU transitions, any browser.
+Left out on purpose: `columns` (a picture above its text does the job), per-element timing in
+the Markdown, audio, a transition per slide, GPU transitions, any browser.

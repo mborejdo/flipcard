@@ -1,19 +1,19 @@
 # filmstrip
 
-Frames in, films out. A list of RGB frames (whatever drew them) becomes:
+Frames in, films out. A list of RGB frames, whatever drew them, becomes:
 
-- an animated GIF with one palette learned from the stills and delta frames (only the rectangle
-  that changed is stored, unchanged pixels are transparent), so a film of text cards stays small;
-- an MP4 with H.264 video, pure Rust (`rusty_h264-encoder`, `mp4`), feature `mp4`;
-- an A4 landscape Word file whose only content is the GIF and a line of links (Word plays the
-  GIF in place), feature `docx`;
-- a Screen annotation on a PDF page that plays the MP4 when the page opens in Acrobat; other
-  viewers show the page as it is, feature `pdf`.
+- an animated GIF: one palette learned from the stills, delta frames (only the changed rectangle,
+  unchanged pixels transparent), so a film of text cards stays small;
+- an MP4, H.264 in pure Rust (`rusty_h264-encoder`, `mp4`), feature `mp4`;
+- an A4 landscape Word file with only the GIF and a line of links (Word plays the GIF in place),
+  feature `docx`;
+- a Screen annotation on a PDF page that plays the MP4 when it opens in Acrobat (other viewers
+  show the page as is), feature `pdf`.
 
-`sequence` turns scenes (each its build-in frames and a hold of its own) into the frame list:
-every scene's build-in, the hold on its last frame, a `Transition` into the next scene (fade,
-wipe, push, pixelize, circle, split or cut, each drawn on the CPU and readable at 10 fps), the
-and the last scene going back into the first, so the loop has no jump.
+`sequence` turns scenes (build-in frames and a hold each) into the frame list: each build-in, the
+hold on its last frame, a `Transition` into the next (fade, wipe, push, pixelize, circle, split
+or cut; CPU-drawn, readable at 10 fps), and the last scene back into the first, so the loop
+doesn't jump.
 
 ```rust
 use filmstrip::{Frame, Scene, Timing, Transition};

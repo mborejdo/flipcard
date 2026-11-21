@@ -1,6 +1,6 @@
 [package]
 name = "flipkit"
-description = "A Markdown deck as a flip-card film: every slide a card drawn by Typst, every key press a build-in, out as GIF, MP4, DOCX and PDF."
+description = "A Markdown deck as a flip-card film: a Typst card per slide, a build-in per key press, out as GIF, MP4, DOCX and PDF."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

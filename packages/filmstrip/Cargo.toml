@@ -1,6 +1,6 @@
 [package]
 name = "filmstrip"
-description = "Frames in, films out: RGB frames to an animated GIF with delta frames, an MP4 (pure-Rust H.264), a Word file that plays the GIF, or a PDF that plays the MP4 when the page opens."
+description = "Frames in, films out: RGB frames to a delta-frame GIF, a pure-Rust H.264 MP4, a Word file that plays the GIF or a PDF that plays the MP4."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

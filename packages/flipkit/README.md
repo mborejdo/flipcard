@@ -1,8 +1,7 @@
 # flipkit
 
-A presiterm deck as a flip-card film. Every slide is a 16:9 card drawn by Typst in the deck's
-tokens; every key press is a build-in; `filmstrip` writes the GIF, the MP4, the Word file and the
-PDF.
+A presiterm deck as a flip-card film: every slide a 16:9 Typst card in the deck's tokens, every
+key press a build-in; `filmstrip` writes GIF, MP4, Word file and PDF.
 
 ```rust,no_run
 use std::path::Path;
@@ -18,5 +17,5 @@ std::fs::write("talk/slides.gif", rendered.gif()?)?;
 # Ok::<(), anyhow::Error>(())
 ```
 
-A deck made in memory: `config.parse(source, name, base)`. `check` draws only the fully built
-cards and returns the ones that overflow. License: MIT OR Apache-2.0.
+A deck from memory: `config.parse(source, name, base)`. `check` draws only the fully built cards
+and returns the ones that overflow. License: MIT OR Apache-2.0.
