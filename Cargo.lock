@@ -368,8 +368,8 @@ dependencies = [
 
 [[package]]
 name = "colonmark"
-version = "0.2.0"
-source = "git+https://github.com/mborejdo/presiterm?tag=v0.2.0#a5d697d35a5899a3d5c5955d9494a7baf04cc19e"
+version = "0.3.0"
+source = "git+https://github.com/mborejdo/presiterm?tag=v0.3.0#d3838ed171b24e193250e85db0b71850263ba688"
 dependencies = [
  "comrak",
 ]
@@ -538,8 +538,8 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
 name = "deckmark"
-version = "0.2.0"
-source = "git+https://github.com/mborejdo/presiterm?tag=v0.2.0#a5d697d35a5899a3d5c5955d9494a7baf04cc19e"
+version = "0.3.0"
+source = "git+https://github.com/mborejdo/presiterm?tag=v0.3.0#d3838ed171b24e193250e85db0b71850263ba688"
 dependencies = [
  "anyhow",
  "colonmark",
@@ -2671,8 +2671,8 @@ dependencies = [
 
 [[package]]
 name = "swatchbook"
-version = "0.2.0"
-source = "git+https://github.com/mborejdo/presiterm?tag=v0.2.0#a5d697d35a5899a3d5c5955d9494a7baf04cc19e"
+version = "0.3.0"
+source = "git+https://github.com/mborejdo/presiterm?tag=v0.3.0#d3838ed171b24e193250e85db0b71850263ba688"
 dependencies = [
  "serde",
  "toml 1.2.0+spec-1.1.0",
@@ -3326,8 +3326,8 @@ dependencies = [
 
 [[package]]
 name = "typstkit"
-version = "0.2.0"
-source = "git+https://github.com/mborejdo/presiterm?tag=v0.2.0#a5d697d35a5899a3d5c5955d9494a7baf04cc19e"
+version = "0.3.0"
+source = "git+https://github.com/mborejdo/presiterm?tag=v0.3.0#d3838ed171b24e193250e85db0b71850263ba688"
 dependencies = [
  "anyhow",
  "swatchbook",

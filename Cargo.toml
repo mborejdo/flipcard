@@ -27,10 +27,10 @@ libm = "0.2"
 sha2 = "0.11"
 
 # From presiterm: the deck dialect, Markdown with colon fences, the design tokens, in-process Typst.
-colonmark = { git = "https://github.com/mborejdo/presiterm", tag = "v0.2.0" }
-deckmark = { git = "https://github.com/mborejdo/presiterm", tag = "v0.2.0" }
-swatchbook = { git = "https://github.com/mborejdo/presiterm", tag = "v0.2.0" }
-typstkit = { git = "https://github.com/mborejdo/presiterm", tag = "v0.2.0", default-features = false }
+colonmark = { git = "https://github.com/mborejdo/presiterm", tag = "v0.3.0" }
+deckmark = { git = "https://github.com/mborejdo/presiterm", tag = "v0.3.0" }
+swatchbook = { git = "https://github.com/mborejdo/presiterm", tag = "v0.3.0" }
+typstkit = { git = "https://github.com/mborejdo/presiterm", tag = "v0.3.0", default-features = false }
 
 # The workspace's own crates.
 filmstrip = { path = "packages/filmstrip", default-features = false }

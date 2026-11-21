@@ -31,7 +31,8 @@ flipcard config talk/slides.md                   # which flipcard.toml applies
 `flipcard --help` lists every flag (`--hold 5`, `--transition wipe`, ...) with an example and the
 exit codes. [docs/guide.md](docs/guide.md): what each part of a deck becomes, the files, timing,
 fonts. [`examples/film`](examples/film) shows the build-ins: bullets, marked text, metrics, a
-stepped diagram, code; [`examples/phone`](examples/phone) a short tall film with every preset.
+stepped diagram, code; [`examples/phone`](examples/phone) a short tall film: the
+motion presets and every mark.
 
 ## Config
 
@@ -59,14 +60,13 @@ hold = 5                  # also format, safe, preset, fps, width, enter, fade, 
 - `flipkit` draws every slide at every build-in instant as a Typst card (`film.typ`, in the
   deck's tokens) and times the scenes. With a motion preset Rust owns the time: the card is laid
   out once at rest, and per frame a small JSON of word looks moves, scales and fades the words
-  inside their boxes (`typ/motion.typ`), so nothing reflows. Frames are drawn side by side, one
-  Typst engine per worker, and stream to the GIF and MP4 encoders on threads of their own; a
+  inside their boxes (`typ/motion.typ`), so nothing reflows. Frames are drawn side by side on
+  one Typst engine and stream to the GIF and MP4 encoders on threads of their own; a
   frame that stays is drawn once.
 - `filmstrip` writes the GIF (one learned palette, delta frames) and H.264 in an MP4.
 - Same deck, same flags, same bytes: `tests/golden.rs` keeps the SHA-256 of every file of both
   examples, `tests/golden/phone.jsonl` every state of the phone film (`FLIPCARD_BLESS=1` rewrites
-  them). CI also renders the wide example with presiterm
-  v0.2.0 and compares every file byte for byte.
+  them).
 - Design note: [docs/design.md](docs/design.md).
 
 ## Workspace
