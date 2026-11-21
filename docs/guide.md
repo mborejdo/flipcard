@@ -1,27 +1,27 @@
-# presiterm film: the deck as GIF, MP4, DOCX and PDF
+# flipcard: a deck as GIF, MP4, DOCX and PDF
 
 ```sh
-presiterm film talk/slides.md                      # talk/slides.gif
-presiterm film talk/slides.md --mp4 --docx --pdf   # the MP4, a Word file, a PDF
-presiterm film talk/slides.md --out dist           # into dist/ instead of next to the deck
-presiterm film talk/slides.md --cards dist/cards   # every card, fully built, as PNG
-presiterm film talk/slides.md --preview            # play the GIF inline in this WezTerm
-presiterm lint talk/slides.md --film               # which cards do not fit
+flipcard talk/slides.md                      # talk/slides.gif
+flipcard talk/slides.md --mp4 --docx --pdf   # the MP4, a Word file, a PDF
+flipcard talk/slides.md --out dist           # into dist/ instead of next to the deck
+flipcard talk/slides.md --cards dist/cards   # every card, fully built, as PNG
+flipcard talk/slides.md --preview            # play the GIF inline in WezTerm or iTerm2
+flipcard lint talk/slides.md                 # which cards do not fit
 ```
 
-The same deck that presents in the window renders as a film: every slide is a 16:9 card in the
+A deck in the presiterm dialect renders as a film: every slide is a 16:9 card in the
 deck's tokens (the `[theme]` table, `theme: light`), drawn in-process by Typst, no browser.
 Every key press of the talk is a build-in step of the film:
 
-| in the window | in the film |
+| in the deck | in the film |
 |:--|:--|
 | a key press (a `+` bullet, a lit `steps` node) | one scene: `enter` seconds of build-in, then `hold` seconds of rest |
 | `-` bullets shown at once | appear one after the other during the build-in |
 | `==marked==` and `__marked__` | an underline in the accent colour that grows from the left |
 | the first slide, or a heading alone | the heading lands word by word |
-| a `steps` diagram, mermaid or Typst | the node of the step lights up, as in the window |
+| a `steps` diagram, mermaid or Typst | the node of the step lights up |
 | `:::{metrics}` | the numbers count up from zero |
-| a picture, a table, a code block | drawn as in the window, in the card |
+| a picture, a table, a code block | drawn in the card |
 | `:::{notes}` | never in the film |
 | `{only}` blocks | follow the frontmatter's `tags:` |
 
@@ -40,7 +40,7 @@ Every key press of the talk is a build-in step of the film:
 
 ## Timing and size
 
-Eight values, each a flag, a frontmatter key or a `[film]` key in `presiterm.toml`; a flag beats
+Eight values, each a flag, a frontmatter key or a `[film]` key in `flipcard.toml`; a flag beats
 the frontmatter, which beats the file:
 
 | value | flag | default | what |
@@ -86,14 +86,14 @@ scheme (`https://`, `mailto:`) stripped from the label.
 
 ## Fitting
 
-A card that does not fit is never cropped: `presiterm film` stops with
-`slide 4 (The chain): the card overflows onto 2 pages; trim it`, and `presiterm lint --film`
-reports every such card as an error. Fewer words, a smaller picture (`{h=5}`), or a second
+A card that does not fit is never cropped: `flipcard` stops with
+`slide 4 (The chain): the card overflows onto 2 pages; trim it`, and `flipcard lint` reports
+every such card. Fewer words, a smaller picture (`{h=5}`), or a second
 slide.
 
 ## Fonts
 
 The cards use the theme's `sans` for text, `display` for headings (in the heaviest weight the
 family has, so a Black face lands there when you bring one) and `mono` for code and the footer
-(`[theme.fonts]` in presiterm.toml). Inter and Fira Code are built in; other families come from
-font files the config names (`fonts = ["fonts"]`, see `presiterm handbook config`).
+(`[theme.fonts]` in flipcard.toml). Inter and Fira Code are built in; other families come from
+font files the config names (`fonts = ["fonts"]`).

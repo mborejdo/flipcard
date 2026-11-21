@@ -1,5 +1,9 @@
 # The film: a deck as GIF, MP4, DOCX and PDF
 
+Since 21.11.2026 the film is flipcard, its own repo: `flipkit` is the film below (on
+`deckmark`, presiterm's deck model as a package), `flipcard` the command line. The note is kept
+as it was written.
+
 Design note, 06.11.2026, built the same day (`presiterm film`, `packages/filmstrip`,
 `presiterm handbook film`). `presiterm film` renders a deck to files that play on their own: a
 looping GIF for a README or a chat, an MP4 for a post, a Word file for a mail attachment, a PDF
