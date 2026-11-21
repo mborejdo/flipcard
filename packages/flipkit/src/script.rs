@@ -1,15 +1,14 @@
-//! The script around the deck: `:::{scene} <preset>` per slide with `:pace:` and `:beat:`, `==`
-//! in a heading kept apart from `__`, and a card's text as numbered words, punctuation glued to
-//! the word before, `//` a pause.
+//! The script around the deck: `:::{scene} <preset>` per slide with `:pace:` and `:beat:`, and a
+//! card's text as numbered words with their marks, punctuation glued to the word before.
 
 use anyhow::{Context, Result};
-use colonmark::{Inline, Kind};
+use colonmark::Kind;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::motion::{Cue, Preset};
 
-/// What one slide's `:::{scene}` and heading say.
+/// What one slide's `:::{scene}` says.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Scene {
     /// `:::{scene} <preset>`.
@@ -18,8 +17,6 @@ pub(crate) struct Scene {
     pub pace: Option<f64>,
     /// `:beat:`, seconds.
     pub beat: Option<f64>,
-    /// The heading with its marks.
-    pub heading: Vec<Run>,
 }
 
 /// Every slide's scene, in the deck's order (cut as `deckmark` cuts the slides).
@@ -38,13 +35,7 @@ pub(crate) fn read(source: &str) -> Result<Vec<Scene>> {
     sections
         .into_iter()
         .map(|section| {
-            let mut scene = Scene {
-                heading: runs(
-                    section.heading.as_deref().unwrap_or_default(),
-                    &Run::default(),
-                ),
-                ..Scene::default()
-            };
+            let mut scene = Scene::default();
             for block in &section.blocks {
                 let Kind::Directive(d) = &block.kind else {
                     continue;
@@ -69,7 +60,7 @@ pub(crate) fn read(source: &str) -> Result<Vec<Scene>> {
         .collect()
 }
 
-/// A run of text in one style.
+/// A run of text in one style: a `deckmark` span as the card JSON carries it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 #[allow(clippy::struct_excessive_bools, reason = "independent inline switches")]
@@ -78,73 +69,11 @@ pub(crate) struct Run {
     pub bold: bool,
     pub italic: bool,
     pub code: bool,
-    /// `__underline__`, and `==` outside a heading.
     pub underline: bool,
-    /// `==marker==` in a heading.
-    pub mark: bool,
-}
-
-/// `inlines` as runs in `style` and their own marks.
-fn runs(inlines: &[Inline], style: &Run) -> Vec<Run> {
-    let mut out = Vec::new();
-    for inline in inlines {
-        let text = |text: &str| Run {
-            text: text.to_string(),
-            ..style.clone()
-        };
-        let (content, inner) = match inline {
-            Inline::Text(t) | Inline::Html(t) => {
-                out.push(text(t));
-                continue;
-            },
-            Inline::Code(t) => {
-                out.push(Run {
-                    code: true,
-                    ..text(t)
-                });
-                continue;
-            },
-            Inline::Image { alt, .. } => {
-                out.push(text(alt));
-                continue;
-            },
-            Inline::SoftBreak | Inline::LineBreak => {
-                out.push(text(" "));
-                continue;
-            },
-            Inline::Strong(c) => (
-                c,
-                Run {
-                    bold: true,
-                    ..text("")
-                },
-            ),
-            Inline::Emph(c) => (
-                c,
-                Run {
-                    italic: true,
-                    ..text("")
-                },
-            ),
-            Inline::Underline(c) => (
-                c,
-                Run {
-                    underline: true,
-                    ..text("")
-                },
-            ),
-            Inline::Highlight(c) => (
-                c,
-                Run {
-                    mark: true,
-                    ..text("")
-                },
-            ),
-            Inline::Strike(c) | Inline::Link { content: c, .. } => (c, text("")),
-        };
-        out.extend(runs(content, &inner));
-    }
-    out
+    pub highlight: bool,
+    pub strike: bool,
+    /// A `//` before it.
+    pub pause: bool,
 }
 
 /// One word of a card.
@@ -156,9 +85,13 @@ pub(crate) struct Word {
     /// Punctuation (or the rest of a word in another style) glued to it, plain.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub tail: String,
-    /// A `//` before it.
-    #[serde(skip)]
-    pub pause: bool,
+}
+
+impl Word {
+    /// Its letters, the tail's included.
+    pub(crate) fn letters(&self) -> usize {
+        self.run.text.chars().count() + self.tail.chars().count()
+    }
 }
 
 /// The words of `runs`; `pause` carries a `//` over to the next word.
@@ -166,13 +99,10 @@ pub(crate) fn tokenize(runs: &[Run], pause: &mut bool) -> Vec<Word> {
     let mut words: Vec<Word> = Vec::new();
     let mut glue = false;
     for run in runs {
+        *pause |= run.pause;
         for (i, token) in run.text.split(char::is_whitespace).enumerate() {
             let joined = i == 0 && glue;
             if token.is_empty() {
-                continue;
-            }
-            if token == "//" && !joined {
-                *pause = true;
                 continue;
             }
             match words.last_mut() {
@@ -185,9 +115,9 @@ pub(crate) fn tokenize(runs: &[Run], pause: &mut bool) -> Vec<Word> {
                 _ => words.push(Word {
                     run: Run {
                         text: token.to_string(),
+                        pause: std::mem::take(pause),
                         ..run.clone()
                     },
-                    pause: std::mem::take(pause),
                     ..Word::default()
                 }),
             }
@@ -199,9 +129,9 @@ pub(crate) fn tokenize(runs: &[Run], pause: &mut bool) -> Vec<Word> {
     words
 }
 
-/// The card's text as numbered words in reading order (the heading from `heading`, then every
-/// line, item, label and value of the blocks) and a cue for each.
-pub(crate) fn number(card: &mut Value, heading: &[Run]) -> Vec<Cue> {
+/// The card's text as numbered words in reading order (the heading, then every line, item, label
+/// and value of the blocks) and a cue for each.
+pub(crate) fn number(card: &mut Value) -> Vec<Cue> {
     let mut words = Words::default();
     let runs = |value: &Value| Vec::<Run>::deserialize(value).unwrap_or_default();
     let plain = |value: &Value| {
@@ -211,12 +141,7 @@ pub(crate) fn number(card: &mut Value, heading: &[Run]) -> Vec<Cue> {
         }]
     };
     if !card["title"].is_null() {
-        let heading = if heading.is_empty() {
-            runs(&card["title"])
-        } else {
-            heading.to_vec()
-        };
-        card["title"] = words.line(&heading, 0);
+        card["title"] = words.line(&runs(&card["title"]), 0);
     }
     let mut reveal = 0;
     for block in card["blocks"].as_array_mut().into_iter().flatten() {
@@ -269,8 +194,8 @@ impl Words {
             self.cues.push(Cue {
                 block: self.block,
                 step,
-                pause: word.pause,
                 value: None,
+                word: word.clone(),
             });
         }
         json!(words)
@@ -279,10 +204,18 @@ impl Words {
     /// A metric's value: one word that counts up.
     fn value(&mut self, value: &str) -> Value {
         let id = self.cues.len();
+        let pause = std::mem::take(&mut self.pause);
         self.cues.push(Cue {
             block: self.block,
-            pause: std::mem::take(&mut self.pause),
             value: Some(value.to_string()),
+            word: Word {
+                id,
+                run: Run {
+                    pause,
+                    ..Run::default()
+                },
+                ..Word::default()
+            },
             ..Cue::default()
         });
         self.values += 1;
@@ -301,24 +234,56 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn punctuation_glues_to_the_word_before_and_a_pause_to_the_word_after() {
-        let source = "# Ship ==small==, ship // often\n\nPick **one** - then // ship.\n";
-        let scenes = read(source).unwrap();
-        let mut pause = false;
-        let heading = tokenize(&scenes[0].heading, &mut pause);
-        assert_eq!(texts(&heading), ["Ship", "small,", "ship", "often"]);
-        assert!(heading[1].run.mark && !heading[1].run.underline);
-        assert_eq!(heading[1].tail, ",");
-        assert!(heading[3].pause && !heading[2].pause);
-        let body = deckmark::deck::inline("Pick **one** - then // ship.");
-        let runs: Vec<Run> = body
+    fn words(text: &str) -> Vec<Word> {
+        let runs: Vec<Run> = deckmark::deck::inline(text)
             .iter()
             .map(|s| Run::deserialize(json!(s)).unwrap())
             .collect();
-        let words = tokenize(&runs, &mut pause);
-        assert_eq!(texts(&words), ["Pick", "one -", "then", "ship."]);
-        assert!(words[1].run.bold && words[3].pause);
+        tokenize(&runs, &mut false)
+    }
+
+    #[test]
+    fn punctuation_and_hyphens_glue_and_a_pause_goes_to_the_word_after() {
+        let heading = words("Ship ==small==, the KI-Plattform // often");
+        assert_eq!(
+            texts(&heading),
+            ["Ship", "small,", "the", "KI-Plattform", "often"]
+        );
+        assert!(heading[1].run.highlight && !heading[1].run.underline);
+        assert_eq!(
+            (heading[1].tail.as_str(), heading[3].tail.as_str()),
+            (",", "")
+        );
+        assert!(heading[4].run.pause && !heading[3].run.pause);
+        let body = words("Pick **one** - then //**ship**.");
+        assert_eq!(texts(&body), ["Pick", "one -", "then", "ship."]);
+        assert!(body[1].run.bold && body[3].run.bold && body[3].run.pause);
+    }
+
+    #[test]
+    fn every_word_carries_its_marks_in_the_card() {
+        let mut card = json!({
+            "title": deckmark::deck::inline("A ==b=="),
+            "blocks": [{ "kind": "paragraph", "lines": [
+                deckmark::deck::inline("**c** __d__ ~~e~~ f"),
+            ]}],
+        });
+        let cues = number(&mut card);
+        let word = |w: &Value| {
+            ["bold", "underline", "highlight", "strike"]
+                .iter()
+                .position(|k| w[k] == true)
+        };
+        let line = card["blocks"][0]["lines"][0].as_array().unwrap();
+        let marks: Vec<_> = card["title"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .chain(line)
+            .map(word)
+            .collect();
+        assert_eq!(marks, [None, Some(2), Some(0), Some(1), Some(3), None]);
+        assert!(cues[2].word.run.bold && cues[4].word.run.strike);
     }
 
     #[test]
@@ -350,7 +315,7 @@ mod tests {
                 { "kind": "metrics", "items": [{ "value": "1 200", "label": "things" }] },
             ],
         });
-        let cues = number(&mut card, &[]);
+        let cues = number(&mut card);
         let at = |c: &Cue| (c.block, c.step, c.value.is_some());
         let got: Vec<_> = cues.iter().map(at).collect();
         assert_eq!(

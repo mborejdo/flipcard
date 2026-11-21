@@ -35,11 +35,9 @@
 #let stop = rgb(theme.stop)
 #let sans = theme.sans
 #let mono = theme.mono
-#let display = theme.display // headings, in the heaviest weight the family has
-// tall and square: headings and figures in Inter Display Black, set a little tight
-#let big = H >= W
-#let face = if big { "Inter Display" } else { display }
-#let track = if big { -0.02em } else { 0em }
+#let display = theme.display // subheadings
+// headings and figures: Inter Display Black, set a little tight
+#let display-text = text.with(font: "Inter Display", weight: "black", tracking: -0.02em)
 
 // ---- the build-in: progress 0..1 with an ease-out cubic ----
 #let t = if frames > 1 { frame / (frames - 1) } else { 1 }
@@ -74,10 +72,16 @@
   if sp.italic { body = emph(body) }
   body
 }
+// the first `n` letters of word `w`, its tail's included
+#let typed(w, n) = {
+  let (body, tail) = (w.text.codepoints(), w.at("tail", default: "").codepoints())
+  let k = calc.min(n, body.len())
+  [#styled((..w, text: body.slice(0, k).sum(default: "")))#tail.slice(0, n - k).sum(default: "")]
+}
 #let spans(xs, heading: false) = if moving {
-  xs.map(w => word(w, [#styled(w)#w.at("tail", default: "")], band: heading and w.mark, under: w.underline or (w.mark and not heading))).join([ ])
+  xs.map(w => word(w, [#styled(w)#w.at("tail", default: "")], typed: n => typed(w, n), heading: heading)).join([ ])
 } else {
-  xs.map(sp => if sp.underline { marked(styled(sp)) } else { styled(sp) }).join()
+  xs.map(sp => if sp.underline or sp.highlight { marked(styled(sp)) } else { styled(sp) }).join()
 }
 
 // the card's margins sit inside the safe area; a tall card checked for fit (`fit`) keeps a body
@@ -95,7 +99,7 @@
 #show raw.where(block: false): it => box(fill: surface, inset: (x: 0.3em, y: 0.1em), radius: 2 * s * px, it)
 
 #let small(body, fill: muted, size: 5.4, t: auto) = text(font: mono, size: sz(size, t: t), fill: fill, body)
-#let heading-text(body, size) = text(font: face, weight: "black", tracking: track, size: sz(size, t: 40), fill: accent, body)
+#let heading-text(body, size) = display-text(size: sz(size, t: 40), fill: accent, body)
 
 // ---- how many elements build in during this step, so they can be staggered ----
 #let fresh = {
@@ -136,7 +140,7 @@
         set par(spacing: 0.45em)
         for it in b.items {
           let dot = marker(it.level, it.number)
-          let dot = if moving and it.spans.len() > 0 { word(it.spans.first(), dot) } else { dot }
+          let dot = if moving and it.spans.len() > 0 { word(it.spans.first(), dot, dot: true) } else { dot }
           let line = box(inset: (left: it.level * 1.2em), [#dot #h(0.5em) #spans(it.spans)])
           let k = if it.reveal { rc += 1; rc } else { 0 }
           at-step(k, slot, fresh, line)
@@ -157,9 +161,9 @@
           if moving {
             let v = m.value
             let counted = motion.at("n", default: ()).at(v.count, default: v.text)
-            text(font: face, weight: if big { "black" } else { "bold" }, tracking: track, size: sz(17, t: 64), fill: ink, number-width: "tabular", word(v, counted, final: v.text))
+            display-text(size: sz(17, t: 64), fill: ink, number-width: "tabular", word(v, counted, final: v.text))
           } else {
-            text(font: face, weight: if big { "black" } else { "bold" }, tracking: track, size: sz(17, t: 64), fill: ink, counted(m.value))
+            display-text(size: sz(17, t: 64), fill: ink, counted(m.value))
           }
           linebreak()
           at-step(0, slot + i, fresh, small(if moving { spans(m.label) } else { m.label }, t: 18))
@@ -182,7 +186,7 @@
   let words = ()
   for sp in card.title {
     for w in sp.text.split(" ") {
-      if w != "" { words.push((text: w, bold: sp.bold, italic: sp.italic, code: sp.code, underline: sp.underline)) }
+      if w != "" { words.push((..sp, text: w)) }
     }
   }
   words
@@ -194,7 +198,7 @@
   block(width: 100%, below: 7 * s * px, {
     set par(leading: 0.42em)
     body
-    if tall and not card.title.any(w => w.mark) and card.title.len() > 0 {
+    if tall and not card.title.any(w => w.highlight) and card.title.len() > 0 {
       let draw = motion.at("w", default: ()).at(card.title.first().id, default: (:)).at("draw", default: 1)
       layout(size => {
         let w = measure(body, width: size.width).width

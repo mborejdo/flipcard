@@ -2,6 +2,31 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow semver.
 
+## Unreleased
+
+### Added
+
+- Presets `type` (letter by letter at the pace, an accent caret blinking on the beat) and
+  `karaoke` (every word in muted, filled with ink as it is read). Both breathe half a beat after
+  `, ; :` and a beat after `. ! ?`.
+- Marks in motion, drawn once the word has landed: `**bold**` turns to the accent and pulses,
+  `==marked==` gets an accent band, `__underlined__` a line from the left, `~~struck~~` a line
+  through and muted.
+- `examples/phone` shows every mark, `type` and `karaoke`.
+
+### Changed
+
+- On presiterm v0.3.0: deckmark keeps `==`, `__` and `~~` apart and strips `//`, so flipkit no
+  longer reads headings itself.
+- One Typst engine draws every frame side by side; Typst's cache is evicted per chunk. No engine
+  pool.
+- Wide films set headings and metric values in Inter Display Black too. The wide example is
+  current; the goldens are blessed anew.
+
+### Removed
+
+- The CI parity job against presiterm v0.2.0: the goldens keep the bytes.
+
 ## 0.2.0 - 2026-11-21
 
 ### Added

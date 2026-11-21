@@ -28,7 +28,8 @@ pub struct Settings {
     pub fps: Option<u16>,
     /// Width in pixels, even (640).
     pub width: Option<u32>,
-    /// How the words come in: flip, rise, slide, fade, pop or still (flip; rise for tall).
+    /// How the words come in: flip, rise, slide, fade, pop, still, type or karaoke (flip; rise
+    /// for tall).
     pub preset: Option<crate::Preset>,
     /// Seconds every scene stays at least (7 for flip).
     pub hold: Option<f32>,

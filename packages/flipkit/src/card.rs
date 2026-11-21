@@ -311,22 +311,21 @@ fn moving(
     o: &Options,
 ) -> (Vec<String>, usize, f32) {
     card["motion"] = true.into();
-    let mut cues = script::number(card, &scene.heading);
+    let mut cues = script::number(card);
     for cue in cues.iter_mut().filter(|c| page.more && c.block == 0) {
         cue.step = usize::MAX; // a follow-on page's heading is already there
     }
-    let marked = page.slide.heading.is_some()
-        && (o.format == Format::Tall || scene.heading.iter().any(|r| r.mark));
-    let timeline = Timeline::new(preset, scene.beat.unwrap_or(BEAT), step, cues, marked);
+    let heading = page.slide.heading.as_deref();
+    let marked = heading.is_some_and(|h| o.format == Format::Tall || h.iter().any(|s| s.highlight));
+    let wpm = scene.pace.unwrap_or_else(|| f64::from(o.pace));
+    let beat = scene.beat.unwrap_or(BEAT);
+    let timeline = Timeline::new(preset, beat, wpm, step, cues, marked);
     let fps = f64::from(o.fps);
     let frames = timeline.entrances().mul_add(fps, -1e-6).ceil().max(0.0) as usize + 1;
     let states = (0..frames)
         .map(|k| timeline.state(k as f64 / fps))
         .collect();
-    let wpm = scene.pace.unwrap_or_else(|| f64::from(o.pace));
-    let length = timeline
-        .length(step, wpm)
-        .max(o.hold.map_or(0.0, f64::from));
+    let length = timeline.length(step).max(o.hold.map_or(0.0, f64::from));
     (states, frames, ((length * fps).round() / fps) as f32)
 }
 
@@ -363,7 +362,7 @@ fn cut(block: &Block, n: usize) -> Option<(Block, Block)> {
 /// once, at step k the k-th `+` bullet; a lit diagram node brings none.
 pub(crate) fn words(slide: &Slide, step: usize) -> usize {
     fn count(text: &str) -> usize {
-        text.split_whitespace().filter(|w| *w != "//").count()
+        text.split_whitespace().count()
     }
     fn spans(spans: &[Span]) -> usize {
         count(&deckmark::deck::plain(spans))

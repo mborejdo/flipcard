@@ -23,7 +23,35 @@ format: tall
 :::{scene} pop
 :::
 
-A short change // is a short read.
+A short change // is a **short** read.
+
+---
+
+# Mark it
+
+:::{scene} rise
+:::
+
+One ==idea==, one __name__,
+no ~~big bang~~.
+
+---
+
+# Type it
+
+:::{scene} type
+:::
+
+Write the test first, then the code.
+
+---
+
+# Read along
+
+:::{scene} karaoke
+:::
+
+Small, clear steps. Every day.
 
 ---
 

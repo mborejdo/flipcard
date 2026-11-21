@@ -14,7 +14,11 @@ pub(crate) struct Look {
     pub s: f64,
     /// How far its mark is drawn, 0 to 1.
     pub draw: f64,
-    /// How far its colour has turned to the accent, 0 to 1.
+    /// How much of it is typed, 0 to 1.
+    pub chars: f64,
+    /// How far it is filled with ink from the left, from muted, 0 to 1.
+    pub fill: f64,
+    /// How far its colour has turned to its mark's (bold: the accent, struck: muted), 0 to 1.
     pub tint: f64,
 }
 
@@ -26,7 +30,9 @@ impl Default for Look {
             y: 0.0,
             s: 1.0,
             draw: 1.0,
-            tint: 0.0,
+            chars: 1.0,
+            fill: 1.0,
+            tint: 1.0,
         }
     }
 }
@@ -41,6 +47,8 @@ impl Look {
             ("y", self.y, rest.y),
             ("s", self.s, rest.s),
             ("draw", self.draw, rest.draw),
+            ("chars", self.chars, rest.chars),
+            ("fill", self.fill, rest.fill),
             ("tint", self.tint, rest.tint),
         ];
         let mut map = Map::new();

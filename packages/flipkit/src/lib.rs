@@ -48,8 +48,6 @@ pub use motion::Preset;
 
 /// Distinct frames drawn side by side before they go to the encoders.
 const CHUNK: usize = 32;
-/// Most Typst engines drawing at once.
-const WORKERS: usize = 8;
 
 /// How the film is timed and sized.
 #[derive(Clone, Debug, PartialEq)]
@@ -206,8 +204,8 @@ impl std::fmt::Display for Overflow {
 ///
 /// The stills (the last frame of every scene) and the first frames are drawn first: they are the
 /// edges of the transitions, the cards and the GIF's palette. The rest streams to the encoders
-/// in chunks of distinct frames, drawn side by side; a frame that stays, or whose words didn't
-/// move, is drawn once.
+/// in chunks of distinct frames, drawn side by side on one engine; a frame that stays, or whose
+/// words didn't move, is drawn once.
 pub fn render(loaded: &Loaded, options: &Options, outputs: Outputs) -> Result<Rendered> {
     if !options.width.is_multiple_of(2) || options.width < 64 {
         bail!("film width must be an even number of at least 64 pixels");
@@ -215,13 +213,13 @@ pub fn render(loaded: &Loaded, options: &Options, outputs: Outputs) -> Result<Re
     if options.fps == 0 || options.gif_fps == 0 || options.gif_width == 0 {
         bail!("film fps, gif-fps and gif-width must be at least 1");
     }
-    let pool = Pool::new(&loaded.deck.faces)?;
-    let cards = Maker::new(loaded, options)?.cards(&pool.engines[0])?;
-    let stills = pool.run(&cards, |engine, card| {
+    let engine = engine(&loaded.deck.faces)?;
+    let cards = Maker::new(loaded, options)?.cards(&engine)?;
+    let stills = run(&engine, &cards, |engine, card| {
         Ok(Arc::new(card.draw(engine, card.frames - 1)?))
     })?;
     let edges: Vec<_> = cards.iter().zip(&stills).collect();
-    let firsts = pool.run(&edges, |engine, (card, still)| {
+    let firsts = run(&engine, &edges, |engine, (card, still)| {
         Ok(if card.key(0) + 1 == card.frames {
             Arc::clone(still)
         } else {
@@ -249,7 +247,7 @@ pub fn render(loaded: &Loaded, options: &Options, outputs: Outputs) -> Result<Re
     let [gif, mp4] = std::thread::scope(|scope| {
         let film = Film::new(scope, options, outputs, &stills)?;
         for chunk in runs.chunks(CHUNK) {
-            let frames = pool.run(chunk, |engine, run| {
+            let frames = run(&engine, chunk, |engine, run| {
                 Ok(match run[0] {
                     Shot::Card { scene, frame } if frame + 1 == cards[scene].frames => {
                         Arc::clone(&stills[scene])
@@ -262,6 +260,8 @@ pub fn render(loaded: &Loaded, options: &Options, outputs: Outputs) -> Result<Re
                     },
                 })
             })?;
+            // Typst's cache keeps what the last chunk drew: a long film stays small
+            Engine::evict(1);
             for (frame, run) in frames.iter().zip(chunk) {
                 film.push(frame, run.len());
             }
@@ -382,48 +382,16 @@ fn encoder<'s, S: Send + 's>(
     (sender, thread)
 }
 
-/// One Typst engine per worker, as an engine compiles one document at a time.
-struct Pool {
-    threads: rayon::ThreadPool,
-    engines: Vec<Arc<Engine>>,
+/// `job` over `items` side by side on one engine, the results in order.
+fn run<T: Sync, R: Send>(
+    engine: &Engine,
+    items: &[T],
+    job: impl Fn(&Engine, &T) -> Result<R> + Sync,
+) -> Result<Vec<R>> {
+    items.par_iter().map(|item| job(engine, item)).collect()
 }
 
-impl Pool {
-    fn new(faces: &[PathBuf]) -> Result<Self> {
-        let workers = std::thread::available_parallelism()
-            .map_or(1, usize::from)
-            .min(WORKERS);
-        let engines = (0..workers)
-            .map(|_| engine(faces).map(Arc::new))
-            .collect::<Result<_>>()?;
-        let threads = rayon::ThreadPoolBuilder::new()
-            .num_threads(workers)
-            .build()?;
-        Ok(Self { threads, engines })
-    }
-
-    /// `job` over `items` side by side, the results in order; the first error in order wins.
-    fn run<T: Sync, R: Send>(
-        &self,
-        items: &[T],
-        job: impl Fn(&Engine, &T) -> Result<R> + Sync,
-    ) -> Result<Vec<R>> {
-        let results: Vec<Result<R>> = self.threads.install(|| {
-            items
-                .par_iter()
-                .map(|item| {
-                    job(
-                        &self.engines[rayon::current_thread_index().unwrap_or(0)],
-                        item,
-                    )
-                })
-                .collect()
-        });
-        results.into_iter().collect()
-    }
-}
-
-/// A new engine with Inter Display Black (tall and square headings) and the deck's fonts, loaded
+/// A new engine with Inter Display Black (headings and figures) and the deck's fonts, loaded
 /// as `deckmark::faces::engine` loads them: a file as it is, a folder by its font files in name
 /// order.
 fn engine(faces: &[PathBuf]) -> Result<Engine> {
@@ -635,11 +603,15 @@ one two three four five six seven eight nine ten
 
     #[test]
     fn a_scene_ends_as_its_still_and_a_pause_adds_a_beat_cut_on_whole_frames() {
-        let body = "# Ship ==small==\n\none two three\n\n:::{metrics}\n1 200 | things\n:::\n";
+        let body = "# Ship ==small==\n\none **two** three, ==four== __five__ ~~six~~\n\n:::{metrics}\n1 200 | things\n:::\n";
         let rise = tall(body, 12);
         let still = tall(&format!("{body}\n:::{{scene}} still\n:::\n"), 12);
         assert_eq!(rise.stills, still.stills);
-        let paused = tall(&body.replace("two three", "two // three"), 12);
+        for preset in ["type", "karaoke"] {
+            let paced = tall(&format!("{body}\n:::{{scene}} {preset}\n:::\n"), 12);
+            assert_eq!(paced.stills, still.stills, "{preset}");
+        }
+        let paused = tall(&body.replace("**two** three", "**two** // three"), 12);
         assert!(
             (paused.holds[0] - rise.holds[0] - 0.4).abs() < 0.05,
             "{:?}",

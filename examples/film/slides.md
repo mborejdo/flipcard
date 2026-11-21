@@ -1,15 +1,13 @@
 ---
-title: "presiterm as a film"
-author: "Michael Borejdo"
+title: "A deck as a film"
 theme: light
-links: https://github.com/mborejdo/presiterm
 hold: 4
 enter: 1.2
 ---
 
 # The ==same deck==, now a film
 
-**Markdown in, a GIF out**
+**Markdown in, a GIF and an MP4 out**
 
 ---
 
@@ -36,7 +34,7 @@ One palette from the stills; only changed pixels are stored.
 
 ```mermaid steps h=7
 flowchart LR
-  md[Markdown] --> typst[Typst] --> frames[Frames] --> gif[GIF]
+  md[Markdown] --> typst[Typst] --> frames[Frames] --> films[GIF and MP4]
 ```
 
 ---
@@ -44,14 +42,14 @@ flowchart LR
 # Code stays code
 
 ```rust
-let frames = filmstrip::sequence(&scenes, timing)?;
-let gif = filmstrip::gif::encode(&frames, &keys, 10, 48)?;
+let rendered = flipkit::render(&loaded, &options, outputs)?;
+let cards = rendered.cards()?;
 ```
 
 ---
 
 # Thanks
 
-`presiterm film slides.md --mp4 --docx --pdf`
+`flipcard slides.md --gif --mp4`
 
 Note: The closing card. Notes never appear in the film.

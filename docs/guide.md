@@ -52,11 +52,22 @@ for the film, `:::{scene}` for one slide:
 | `fade` | block by block, fading in |
 | `pop` | word by word, scaled up past their size and back |
 | `still` | all there at once |
+| `type` | letter by letter at `pace`, an accent caret blinking on the beat |
+| `karaoke` | all there in muted, each word filled with ink as it is read at `pace` |
 
 Time runs in beats (0.4 s, `:beat:` changes it). The heading comes in first, then each block on
 the beat after the one before has landed; inside a block a word follows the last by half a beat.
-`//` between words waits one more beat and is not shown. A scene then holds for its words read at
-`pace`, at least four beats; `hold` is the floor when set. `enter` is for `flip` only.
+`type` and `karaoke` give each word its letters at `pace` (5.5 letters a word), half a beat more
+after `, ; :` and a beat after `. ! ?`. `//` between words waits one more beat and is not shown. A
+scene then holds for its words read at `pace` (after `type` and `karaoke`: they were read coming
+in), at least four beats; `hold` is the floor when set. `enter` is for `flip` only.
+
+Marks draw once their word has landed:
+
+- `**bold**`: turns to the accent and pulses, 1 to 1.12 and back on a spring over a beat.
+- `==marked==`: an accent band sweeps in behind the words; the ink stays.
+- `__underlined__`: a line draws from the left.
+- `~~struck~~`: a line draws through it and it turns muted.
 
 - `==word==` in a heading: an accent marker draws behind it from the left once the words have
   landed. A tall heading without one gets a bar under it instead.
@@ -136,9 +147,8 @@ first (see Motion).
 
 ## Fonts
 
-Text in the theme's `sans`, headings in `display` (its heaviest weight, so a Black face lands
-there if you bring one), code and footer in `mono` (`[theme.fonts]` in flipcard.toml). Inter and
+Text in the theme's `sans`, code and footer in `mono` (`[theme.fonts]` in flipcard.toml). Inter and
 Fira Code are built in; other families come from the font files the config names
 (`fonts = ["fonts"]`).
-Tall and square films set headings and metric values in Inter Display Black (SIL OFL 1.1,
-built in), whatever the `display`.
+Headings and metric values are set in Inter Display Black (SIL OFL 1.1, built in), whatever the
+`display`; `display` is for subheadings.
