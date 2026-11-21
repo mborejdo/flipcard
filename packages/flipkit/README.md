@@ -1,19 +1,21 @@
 # flipkit
 
-A presiterm deck as a flip-card film: every slide a 16:9 Typst card in the deck's tokens, every
-key press a build-in; `filmstrip` writes GIF, MP4, Word file and PDF.
+A presiterm deck as a flip-card film: every slide a Typst card in the deck's tokens, wide (16:9),
+tall (9:16) or square, every key press a build-in; the frames stream to `filmstrip`, which writes
+GIF, MP4, Word file and PDF.
 
 ```rust,no_run
 use std::path::Path;
 
-use flipkit::{Config, Options, Settings};
+use flipkit::{Config, Options, Outputs, Settings};
 
 let file = Path::new("talk/slides.md");
 let config = Config::load(Path::new("talk"))?;
 let loaded = config.deck(file)?;
 let options = Options::resolve(Settings::default(), &loaded.source, &config)?;
-let rendered = flipkit::render(&loaded, &options)?;
-std::fs::write("talk/slides.gif", rendered.gif()?)?;
+let outputs = Outputs { gif: true, mp4: false };
+let rendered = flipkit::render(&loaded, &options, outputs)?;
+std::fs::write("talk/slides.gif", rendered.gif.unwrap_or_default())?;
 # Ok::<(), anyhow::Error>(())
 ```
 

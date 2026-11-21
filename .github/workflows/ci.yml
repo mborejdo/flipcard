@@ -47,6 +47,7 @@ jobs:
         run: |
           cargo run --locked -p flipcard -- lint examples/film/slides.md
           cargo run --locked -p flipcard -- examples/film/slides.md --gif --mp4 --docx --pdf --cards target/demo/cards --out target/demo
+          cargo run --locked -p flipcard -- lint examples/phone/script.md
 
   # Temporary, until presiterm drops its film: the example rendered by flipcard and by
   # presiterm v0.2.0 is the same bytes, every file.

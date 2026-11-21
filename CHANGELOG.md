@@ -2,6 +2,29 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow semver.
 
+## Unreleased
+
+### Added
+
+- `format: wide | tall | square` (also `16:9`, `9:16`, `1:1`), `safe: none | phone`,
+  `gif-width`, `gif-fps`: frontmatter, `[film]` and `--format --safe --gif-width --gif-fps`. Tall
+  is 1080x1920 at 30 fps in the phone's safe area, its GIF a 360 px preview at 15 fps.
+- `examples/phone`, a short tall film.
+- `filmstrip`: `gif::Writer` and `video::Writer` (frame by frame), `Frame::downscale`, `shots`.
+- Golden SHA-256 of both examples (`FLIPCARD_BLESS=1` rewrites them); a bench at 1080x1920.
+
+### Changed
+
+- Frames stream to the encoders in chunks, drawn side by side on one Typst engine per worker; a
+  frame that stays is drawn once. A long film no longer sits in memory.
+- `flipkit::render` takes the `Outputs` to encode; `Rendered` holds the stills, the GIF and the
+  MP4.
+- The H.264 level follows the macroblocks per frame and second (3.0 for 640x360, 4.0 for
+  1080x1920 at 30 fps).
+- The Word and PDF pages of a tall film are A4 portrait.
+
+The wide example is the same bytes as before.
+
 ## 0.1.0 - unreleased
 
 ### Added

@@ -6,7 +6,7 @@
 //! plays the MP4.
 //!
 //! The deck is the presiterm dialect, read by [`deckmark`]. This file is the spine: [`Options`],
-//! [`render`] and the containers; [`config`] reads `flipcard.toml`, [`format`] the canvas. The
+//! [`render`] and the containers; [`config`] reads `flipcard.toml`, [`format`](mod@format) the canvas. The
 //! card layout is `film.typ`, the PDF page `page.typ`, both embedded.
 
 // Pixel arithmetic converts between usize, u32 and f32; a card is a few thousand pixels, far
