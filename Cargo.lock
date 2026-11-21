@@ -918,6 +918,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "sha2",
  "swatchbook",
  "tempfile",
  "toml 1.2.0+spec-1.1.0",
