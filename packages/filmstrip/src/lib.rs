@@ -2,8 +2,8 @@
 //! file that plays the GIF ([`docx`]) or a PDF page that plays the MP4 ([`pdf`]). Pure Rust,
 //! nothing started.
 //!
-//! [`sequence`] builds the frame list of a film from scenes: every scene's build-in frames, a
-//! hold on its last frame, a [`Transition`] into the next scene.
+//! [`shots`] plans the frames of a film from scenes: every scene's build-in frames, a hold on its
+//! last frame, a [`Transition`] into the next scene. [`sequence`] draws that plan.
 
 // Pixel and timing math: frames are a few hundred pixels wide and a film a few hundred frames
 // long, far inside every range.
@@ -86,6 +86,28 @@ impl Frame {
             height: self.height,
             rgb,
         }
+    }
+
+    /// This frame `n` times smaller, every pixel the mean of an `n` x `n` block; the right and
+    /// bottom remainder is dropped.
+    #[must_use]
+    pub fn downscale(&self, n: u32) -> Self {
+        if n <= 1 {
+            return self.clone();
+        }
+        let area = n * n;
+        Self::drawn(self.width / n, self.height / n, |x, y| {
+            let mut sum = [0u32; 3];
+            for dy in 0..n {
+                for dx in 0..n {
+                    let px = self.pixel(x * n + dx, y * n + dy);
+                    for (s, v) in sum.iter_mut().zip(px) {
+                        *s += u32::from(v);
+                    }
+                }
+            }
+            sum.map(|s| ((s + area / 2) / area) as u8)
+        })
     }
 
     /// A frame drawn pixel by pixel.
@@ -270,9 +292,61 @@ pub struct Scene<'a> {
     pub hold: f32,
 }
 
-/// The frames of the whole film. Every scene's build-in frames stay `ticks` frames each, the
-/// last one until the scene's `hold` is used up, then the transition into the next scene, the
-/// last into the first so the loop has no jump.
+/// One frame of the film, by where it comes from.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Shot {
+    /// Build-in frame `frame` of scene `scene`.
+    Card {
+        /// The scene.
+        scene: usize,
+        /// The frame of its build-in.
+        frame: usize,
+    },
+    /// The transition from the last frame of scene `scene` into the first of the next, at `t`.
+    Between {
+        /// The scene it leaves.
+        scene: usize,
+        /// How far the transition is, strictly between 0 and 1.
+        t: f32,
+    },
+}
+
+/// The plan of the whole film, one [`Shot`] per frame; `scenes` are (build-in frames, hold)
+/// pairs. Every build-in frame stays `ticks` frames, the last one until the scene's `hold` is
+/// used up, then the transition into the next scene, the last into the first so the loop has
+/// no jump.
+pub fn shots(scenes: &[(usize, f32)], timing: Timing) -> Result<Vec<Shot>> {
+    if scenes.is_empty() {
+        bail!("no scene frames");
+    }
+    let fade = match timing.transition {
+        Transition::Cut => 0,
+        _ => timing.frames(timing.fade),
+    };
+    let ticks = timing.ticks.max(1);
+    let mut out = Vec::new();
+    for (scene, &(frames, hold)) in scenes.iter().enumerate() {
+        let Some(last) = frames.checked_sub(1) else {
+            bail!("scene {} has no frames", scene + 1);
+        };
+        for frame in 0..last {
+            out.extend(std::iter::repeat_n(Shot::Card { scene, frame }, ticks));
+        }
+        let rest = timing
+            .frames(hold)
+            .max(1)
+            .saturating_sub(last * ticks)
+            .max(ticks);
+        out.extend(std::iter::repeat_n(Shot::Card { scene, frame: last }, rest));
+        out.extend((1..=fade).map(|k| Shot::Between {
+            scene,
+            t: k as f32 / (fade + 1) as f32,
+        }));
+    }
+    Ok(out)
+}
+
+/// The frames of the whole film, as [`shots`] plans them.
 ///
 /// # Examples
 ///
@@ -290,45 +364,34 @@ pub fn sequence(scenes: &[Scene<'_>], timing: Timing) -> Result<Vec<Frame>> {
     let Some(first) = scenes.first().and_then(|s| s.frames.first()) else {
         bail!("no scene frames");
     };
-    let (w, h) = (first.width, first.height);
     if let Some(odd) = scenes
         .iter()
         .flat_map(|s| s.frames)
         .find(|f| !f.matches(first))
     {
         bail!(
-            "scene frames differ in size: {w}x{h} and {}x{}",
+            "scene frames differ in size: {}x{} and {}x{}",
+            first.width,
+            first.height,
             odd.width,
             odd.height
         );
     }
-    let fade = match timing.transition {
-        Transition::Cut => 0,
-        _ => timing.frames(timing.fade),
-    };
-    let ticks = timing.ticks.max(1);
-    let mut out = Vec::new();
-    for (i, scene) in scenes.iter().enumerate() {
-        let Some((last, build)) = scene.frames.split_last() else {
-            bail!("scene {} has no frames", i + 1);
-        };
-        for f in build {
-            for _ in 0..ticks {
-                out.push(f.clone());
-            }
-        }
-        let hold = timing.frames(scene.hold).max(1);
-        let rest = hold.saturating_sub(build.len() * ticks).max(ticks);
-        for _ in 0..rest {
-            out.push(last.clone());
-        }
-        let next = &scenes[(i + 1) % scenes.len()].frames[0];
-        for k in 1..=fade {
-            let t = k as f32 / (fade + 1) as f32;
-            out.push(timing.transition.frame(last, next, t));
-        }
-    }
-    Ok(out)
+    let plan: Vec<(usize, f32)> = scenes.iter().map(|s| (s.frames.len(), s.hold)).collect();
+    let frame = |scene: usize, frame: usize| &scenes[scene].frames[frame];
+    Ok(shots(&plan, timing)?
+        .into_iter()
+        .map(|shot| match shot {
+            Shot::Card { scene, frame: f } => frame(scene, f).clone(),
+            Shot::Between { scene, t } => {
+                let last = scenes[scene].frames.len() - 1;
+                let next = (scene + 1) % scenes.len();
+                timing
+                    .transition
+                    .frame(frame(scene, last), frame(next, 0), t)
+            },
+        })
+        .collect())
 }
 
 #[cfg(test)]
@@ -447,6 +510,18 @@ mod tests {
             error.contains("fade, wipe") && error.contains("slide"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn a_downscale_averages_every_block_and_drops_the_remainder() {
+        let mut frame = Frame::solid(5, 2, [0; 3]);
+        frame.rgb[..3].copy_from_slice(&[200; 3]); // (0, 0)
+        frame.rgb[3..6].copy_from_slice(&[100; 3]); // (1, 0)
+        let small = frame.downscale(2);
+        assert_eq!((small.width, small.height), (2, 1));
+        assert_eq!(small.pixel(0, 0), [75; 3]);
+        assert_eq!(small.pixel(1, 0), [0; 3]);
+        assert_eq!(frame.downscale(1), frame);
     }
 
     #[test]

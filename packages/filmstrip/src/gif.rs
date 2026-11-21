@@ -32,88 +32,153 @@ pub fn encode(frames: &[Frame], keyframes: &[Frame], fps: u16, colours: usize) -
     let Some(first) = frames.first() else {
         bail!("no frames");
     };
-    let (Ok(w), Ok(h)) = (u16::try_from(first.width), u16::try_from(first.height)) else {
-        bail!(
-            "frame too large for a GIF: {}x{}",
-            first.width,
-            first.height
-        );
-    };
-    if fps == 0 {
-        bail!("fps must be at least 1");
-    }
     let stills = if keyframes.is_empty() {
         frames
     } else {
         keyframes
     };
-    // NeuQuant wants RGBA samples; every third pixel keeps the training quick.
-    let mut samples = Vec::new();
-    for f in stills {
-        for px in f.rgb.as_chunks::<3>().0.iter().step_by(3) {
-            samples.extend_from_slice(&[px[0], px[1], px[2], 255]);
-        }
+    let mut writer = Writer::new(first.width, first.height, stills, fps, colours)?;
+    for f in frames {
+        writer.push(f)?;
     }
-    // One slot stays free for the "unchanged" (transparent) pixels of delta frames.
-    let colours = colours.clamp(2, 255);
-    let nq = NeuQuant::new(10, colours, &samples);
-    let mut palette: Vec<u8> = nq
-        .color_map_rgba()
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .flat_map(|c| [c[0], c[1], c[2]])
-        .collect();
-    let transparent = u8::try_from(palette.len() / 3)?;
-    palette.extend_from_slice(&[0, 0, 0]);
+    writer.finish()
+}
 
-    let tick = (100.0 / f32::from(fps)).round().max(1.0) as u32; // centiseconds per frame
-    let mut out = Vec::new();
-    {
-        let mut enc = Encoder::new(&mut out, w, h, &palette)?;
-        enc.set_repeat(Repeat::Infinite)?;
-        let mut cache: HashMap<[u8; 3], u8> = HashMap::new();
-        let mut quantize = |f: &Frame| -> Vec<u8> {
-            f.rgb
-                .as_chunks::<3>()
-                .0
-                .iter()
-                .map(|px| {
-                    let key = *px;
-                    *cache
-                        .entry(key)
-                        .or_insert_with(|| nq.index_of(&[px[0], px[1], px[2], 255]) as u8)
-                })
-                .collect()
-        };
-        // Frames are written late: identical neighbours fold into the delay of the frame on
-        // screen, and every frame after the first is a delta against the previous.
-        let mut put = |buf: &[u8], shown: Option<&[u8]>, count: u32| {
-            write(&mut enc, w, h, buf, shown, transparent, count * tick)
-        };
-        let mut shown: Option<Vec<u8>> = None;
-        let mut pending: Option<(Vec<u8>, u32)> = None;
-        for f in frames {
-            if !f.matches(first) {
-                bail!("frames differ in size");
-            }
-            let indexed = quantize(f);
-            match pending.as_mut() {
-                Some((buf, n)) if *buf == indexed => *n += 1,
-                _ => {
-                    if let Some((buf, n)) = pending.take() {
-                        put(&buf, shown.as_deref(), n)?;
-                        shown = Some(buf);
-                    }
-                    pending = Some((indexed, 1));
-                },
-            }
-        }
-        if let Some((buf, n)) = pending.take() {
-            put(&buf, shown.as_deref(), n)?;
-        }
+/// A GIF written frame by frame. Frames are written late: identical neighbours fold into the
+/// delay of the frame on screen, and every frame after the first is a delta against the previous.
+pub struct Writer {
+    enc: Encoder<Vec<u8>>,
+    nq: NeuQuant,
+    cache: HashMap<[u8; 3], u8>,
+    size: (u16, u16),
+    transparent: u8,
+    /// Centiseconds per frame.
+    tick: u32,
+    /// The indexed frame on screen.
+    shown: Option<Vec<u8>>,
+    /// The indexed frame waiting to be written, and how many frames it stays.
+    pending: Option<(Vec<u8>, u32)>,
+    /// The pixels of the last frame pushed: the same pixels skip the quantizing.
+    last: Vec<u8>,
+}
+
+impl std::fmt::Debug for Writer {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.debug_struct("Writer")
+            .field("size", &self.size)
+            .finish_non_exhaustive()
     }
-    Ok(out)
+}
+
+impl Writer {
+    /// A GIF of `width` x `height` at `fps`, its palette (`colours` entries, 2 to 255) learned
+    /// from `stills`.
+    pub fn new(
+        width: u32,
+        height: u32,
+        stills: &[Frame],
+        fps: u16,
+        colours: usize,
+    ) -> Result<Self> {
+        let (Ok(w), Ok(h)) = (u16::try_from(width), u16::try_from(height)) else {
+            bail!("frame too large for a GIF: {width}x{height}");
+        };
+        if fps == 0 {
+            bail!("fps must be at least 1");
+        }
+        // NeuQuant wants RGBA samples; every third pixel keeps the training quick.
+        let mut samples = Vec::new();
+        for f in stills {
+            for px in f.rgb.as_chunks::<3>().0.iter().step_by(3) {
+                samples.extend_from_slice(&[px[0], px[1], px[2], 255]);
+            }
+        }
+        // One slot stays free for the "unchanged" (transparent) pixels of delta frames.
+        let nq = NeuQuant::new(10, colours.clamp(2, 255), &samples);
+        let mut palette: Vec<u8> = nq
+            .color_map_rgba()
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .flat_map(|c| [c[0], c[1], c[2]])
+            .collect();
+        let transparent = u8::try_from(palette.len() / 3)?;
+        palette.extend_from_slice(&[0, 0, 0]);
+        let mut enc = Encoder::new(Vec::new(), w, h, &palette)?;
+        enc.set_repeat(Repeat::Infinite)?;
+        Ok(Self {
+            enc,
+            nq,
+            cache: HashMap::new(),
+            size: (w, h),
+            transparent,
+            tick: (100.0 / f32::from(fps)).round().max(1.0) as u32,
+            shown: None,
+            pending: None,
+            last: Vec::new(),
+        })
+    }
+
+    /// Add the next frame; it has the GIF's size.
+    pub fn push(&mut self, frame: &Frame) -> Result<()> {
+        let (w, h) = self.size;
+        if (frame.width, frame.height) != (u32::from(w), u32::from(h)) || !frame.is_consistent() {
+            bail!("frames differ in size");
+        }
+        if let Some((_, n)) = self.pending.as_mut().filter(|_| self.last == frame.rgb) {
+            *n += 1;
+            return Ok(());
+        }
+        self.last.clone_from(&frame.rgb);
+        let (nq, cache) = (&self.nq, &mut self.cache);
+        let indexed: Vec<u8> = frame
+            .rgb
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .map(|px| {
+                *cache
+                    .entry(*px)
+                    .or_insert_with(|| nq.index_of(&[px[0], px[1], px[2], 255]) as u8)
+            })
+            .collect();
+        match self.pending.as_mut() {
+            Some((buf, n)) if *buf == indexed => *n += 1,
+            _ => {
+                self.flush()?;
+                self.pending = Some((indexed, 1));
+            },
+        }
+        Ok(())
+    }
+
+    /// Write the last frame and the trailer; the GIF's bytes.
+    pub fn finish(mut self) -> Result<Vec<u8>> {
+        if self.pending.is_none() {
+            bail!("no frames");
+        }
+        self.flush()?;
+        Ok(self.enc.into_inner()?)
+    }
+
+    /// Write the pending frame, which then is on screen.
+    fn flush(&mut self) -> Result<()> {
+        if let Some((buf, n)) = self.pending.take() {
+            let (w, h) = self.size;
+            let delay = n * self.tick;
+            write(
+                &mut self.enc,
+                w,
+                h,
+                &buf,
+                self.shown.as_deref(),
+                self.transparent,
+                delay,
+            )?;
+            self.shown = Some(buf);
+        }
+        Ok(())
+    }
 }
 
 /// Write one frame as the smallest rectangle that differs from what is on screen; unchanged
