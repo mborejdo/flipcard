@@ -141,7 +141,8 @@
         for it in b.items {
           let dot = marker(it.level, it.number)
           let dot = if moving and it.spans.len() > 0 { word(it.spans.first(), dot, dot: true) } else { dot }
-          let line = box(inset: (left: it.level * 1.2em), [#dot #h(0.5em) #spans(it.spans)])
+          // a wrapped item hangs under its first word
+          let line = box(inset: (left: it.level * 1.2em), context par(hanging-indent: measure([#dot #h(0.5em) #box()]).width, [#dot #h(0.5em) #spans(it.spans)]))
           let k = if it.reveal { rc += 1; rc } else { 0 }
           at-step(k, slot, fresh, line)
           if k == step { slot += 1 }
@@ -193,9 +194,12 @@
 }
 // moving: a marker behind the `==` words, or on a tall card a bar under the whole heading, drawn
 // from the left once the words have landed
+// a follow-on page's heading stays where the slide's first page has it: `lift` points down
+#let lift = card.at("lift", default: 0)
+#let lifted(body) = if lift == 0 { body } else { move(dy: lift * px, body) }
 #let heading-block = if card.title == none { none } else if moving {
   let body = heading-text(spans(card.title, heading: true), if card.first { 19 } else { 13 })
-  block(width: 100%, below: 7 * s * px, {
+  block(width: 100%, below: 7 * s * px, lifted({
     set par(leading: 0.42em)
     body
     if tall and not card.title.any(w => w.highlight) and card.title.len() > 0 {
@@ -206,7 +210,7 @@
         box(width: w, align(left, line(length: w * draw, stroke: 3 * s * px + accent)))
       })
     }
-  })
+  }))
 } else if card.first {
   let n = title-words.len()
   block(width: 100%, {

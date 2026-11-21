@@ -22,7 +22,7 @@ Examples:
   flipcard talk/slides.md --format tall --mp4   a 9:16 film for phones, 1080x1920 at 30 fps
   flipcard talk/slides.md --format tall --safe none --gif-width 270 --gif-fps 10
   flipcard talk/slides.md --format tall --preset slide
-                                                words in from the left: rise, slide, fade, pop, still, type, karaoke, flip
+                                                words in from the left: rise, slide, fade, pop, still, type, karaoke, move, stack, flip
   flipcard lint talk/slides.md                  does every card fit
   flipcard config talk/slides.md                which flipcard.toml applies, and its values
 
@@ -100,8 +100,8 @@ pub(crate) struct FilmArgs {
     /// default phone for tall, none otherwise.
     #[arg(long, value_name = "NAME")]
     pub(crate) safe: Option<flipkit::Safe>,
-    /// How the words come in: flip, rise, slide, fade, pop, still, type or karaoke; default flip, rise for
-    /// tall. A scene sets its own with `:::{scene} pop`.
+    /// How the words come in: flip, rise, slide, fade, pop, still, type, karaoke, move or stack;
+    /// default flip, rise for tall. A scene sets its own with `:::{scene} pop`.
     #[arg(long, value_name = "NAME")]
     pub(crate) preset: Option<flipkit::Preset>,
     /// Frames per second (--fps 12); default 10, 30 for tall and square.

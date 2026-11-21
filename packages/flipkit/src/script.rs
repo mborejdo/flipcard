@@ -85,6 +85,9 @@ pub(crate) struct Word {
     /// Punctuation (or the rest of a word in another style) glued to it, plain.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub tail: String,
+    /// Its mark runs on over the space to the next word, marked alike.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub bridge: bool,
 }
 
 impl Word {
@@ -117,7 +120,11 @@ pub(crate) fn tokenize(runs: &[Run], pause: &mut bool) -> Vec<Word> {
                     }
                     last.tail.push_str(token);
                 },
-                _ => {
+                last => {
+                    // a line mark runs on to the next word of its run, unless punctuation is between
+                    if let Some(last) = last.filter(|l| i > 0 && l.tail.is_empty()) {
+                        last.bridge = run.underline || run.highlight || run.strike;
+                    }
                     // trailing punctuation goes to the tail, so a mark leaves it out
                     let cut = token.trim_end_matches(TRAILING);
                     let cut = if run.code || cut.is_empty() {
@@ -209,8 +216,8 @@ impl Words {
             self.cues.push(Cue {
                 block: self.block,
                 step,
-                value: None,
                 word: word.clone(),
+                ..Cue::default()
             });
         }
         json!(words)
@@ -278,6 +285,14 @@ mod tests {
         assert!(body[1].run.bold && body[3].run.bold && body[3].run.pause);
         let tails: Vec<_> = body.iter().map(|w| w.tail.as_str()).collect();
         assert_eq!(tails, ["", " -", "", ".", "!", ""]);
+    }
+
+    #[test]
+    fn a_mark_bridges_the_space_between_two_words_of_its_run() {
+        let bridges = |text: &str| -> Vec<bool> { words(text).iter().map(|w| w.bridge).collect() };
+        assert_eq!(bridges("No ~~big bang~~ here"), [false, true, false, false]);
+        assert_eq!(bridges("==one, two== **bold words**"), [false; 4]);
+        assert_eq!(bridges("==a== ==b=="), [false, false]);
     }
 
     #[test]

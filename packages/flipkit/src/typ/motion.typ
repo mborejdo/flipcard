@@ -3,7 +3,8 @@
 // much is typed, fill how far ink has filled it from muted, tint toward its mark's colour; a
 // missing field is at rest), the counted metric values (n) and the word the caret follows (c).
 // The word's box has its final size; the look moves, scales and fades the glyphs inside it, so
-// nothing reflows.
+// nothing reflows. Every word leaves `metadata("id width height size") <word>` (points) at its
+// box's top left: where the words are, for the kinetic presets.
 
 #let motion = json(bytes(sys.inputs.at("state", default: "{}")))
 #let motion-theme = json(bytes(sys.inputs.theme))
@@ -13,14 +14,19 @@
 // rest when that differs (a counted value), `typed(n)` its first n letters as body and tail, laid
 // out where they are at rest. Its marks, drawn from the left as `draw` grows: `==` a marker
 // stroke just under the baseline in a `heading`, else an accent band behind the glyphs; `__` a
-// line below; `~~` a line through, the word turning muted; `**` turns it to the accent. A `dot`
-// (a list marker) only moves with its word.
+// line below; `~~` a line through, the word turning muted; `**` turns it to the accent. A mark
+// on a `bridge` word runs on over the space to the next. A `dot` (a list marker) only moves with
+// its word.
 #let word(w, body, tail: "", final: none, typed: none, heading: false, dot: false) = context {
   let look = motion.at("w", default: ()).at(w.id, default: (:))
   let (o, x, y, s, draw, chars, fill, tint) = ("o", "x", "y", "s", "draw", "chars", "fill", "tint").zip((1, 0, 0, 1, 1, 1, 1, 1)).map(((k, d)) => look.at(k, default: d))
   let rest = if final == none { [#body#tail] } else { final }
   let (size, marked) = (measure(rest), measure(body).width)
-  if o == 0 or chars == 0 { return box(width: size.width, hide(rest)) }
+  if w.at("bridge", default: false) { marked += measure(text(" ")).width }
+  let spot = if not dot {
+    [#metadata((w.id, size.width / 1pt, size.height / 1pt, text.size.to-absolute() / 1pt).map(str).join(" ")) <word>]
+  }
+  if o == 0 or chars == 0 { return box(width: size.width, { spot; hide(rest) }) }
   let mark(key) = not dot and w.at(key, default: false)
   let target = if mark("strike") { motion-muted } else if mark("bold") { motion-accent }
   let ink = if target == none or tint == 0 { text.fill } else if tint >= 1 { target } else {
@@ -38,9 +44,12 @@
   }
   let line-at(dy, stroke) = place(left + bottom, dy: dy, line(length: marked * draw, stroke: stroke))
   box(width: size.width, align(left, {
+    spot
     if draw > 0 and mark("highlight") {
       if heading { line-at(0.08em, (paint: motion-accent, thickness: 0.1em, cap: "round")) } else {
-        place(left + bottom, dx: -0.08em, dy: 0.22em, rect(width: marked * draw + 0.16em, height: 1.05em, radius: 0.12em, fill: motion-accent.transparentize(70%)))
+        // a bridged band ends where the next one starts
+        let pad = if w.at("bridge", default: false) { 0em } else { 0.16em }
+        place(left + bottom, dx: -0.08em, dy: 0.22em, rect(width: marked * draw + pad, height: 1.05em, radius: 0.12em, fill: motion-accent.transparentize(70%)))
       }
     }
     if draw > 0 and mark("underline") { line-at(0.2em, 0.09em + alpha(motion-accent)) }

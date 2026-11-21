@@ -28,11 +28,15 @@ pub enum Preset {
     Type,
     /// Every word there in muted, filled with ink as it is read at the pace.
     Karaoke,
+    /// Magic move: a word the card before has too glides from where it was; the others rise.
+    Move,
+    /// Line by line from below at the pace, the lines before moving up to make room.
+    Stack,
 }
 
 impl Preset {
     /// Every preset, in the order of the docs.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 10] = [
         Self::Flip,
         Self::Rise,
         Self::Slide,
@@ -41,6 +45,8 @@ impl Preset {
         Self::Still,
         Self::Type,
         Self::Karaoke,
+        Self::Move,
+        Self::Stack,
     ];
 
     /// The name the frontmatter, the config, the flag and `:::{scene}` use.
@@ -55,6 +61,8 @@ impl Preset {
             Self::Still => "still",
             Self::Type => "type",
             Self::Karaoke => "karaoke",
+            Self::Move => "move",
+            Self::Stack => "stack",
         }
     }
 
@@ -62,7 +70,7 @@ impl Preset {
     pub(crate) fn look(self, p: f64, letters: usize) -> Look {
         let (ease, rest) = (Curve::Ease.at(p), Look::default());
         match self {
-            Self::Rise => Look {
+            Self::Rise | Self::Move => Look {
                 o: ease,
                 y: 0.5 * (1.0 - ease),
                 ..rest
@@ -72,7 +80,8 @@ impl Preset {
                 x: -0.6 * (1.0 - Curve::Spring.at(p)),
                 ..rest
             },
-            Self::Fade => Look { o: ease, ..rest },
+            // a stacked line fades in; the timeline moves it and the lines before up
+            Self::Fade | Self::Stack => Look { o: ease, ..rest },
             Self::Pop => Look {
                 o: Curve::Linear.at(2.0 * p),
                 s: Curve::Back.at(p),
@@ -98,14 +107,24 @@ impl Preset {
     /// Half-beats from one word's entrance to the next one's in a block (not paced).
     pub(crate) const fn stagger(self) -> u32 {
         match self {
-            Self::Fade | Self::Flip | Self::Still | Self::Type | Self::Karaoke => 0,
-            Self::Rise | Self::Slide | Self::Pop => 1,
+            Self::Fade | Self::Flip | Self::Still | Self::Type | Self::Karaoke | Self::Stack => 0,
+            Self::Rise | Self::Slide | Self::Pop | Self::Move => 1,
         }
     }
 
     /// Each word takes its letters at the pace.
     pub(crate) const fn paced(self) -> bool {
         matches!(self, Self::Type | Self::Karaoke)
+    }
+
+    /// The words are read as they come in, so the scene holds only four beats after.
+    pub(crate) const fn read_in(self) -> bool {
+        matches!(self, Self::Type | Self::Karaoke | Self::Stack)
+    }
+
+    /// It times the words by where they are on the card.
+    pub(crate) const fn kinetic(self) -> bool {
+        matches!(self, Self::Move | Self::Stack)
     }
 }
 

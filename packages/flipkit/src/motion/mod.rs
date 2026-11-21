@@ -6,10 +6,12 @@ mod count;
 mod ease;
 mod look;
 mod preset;
+mod spot;
 mod timeline;
 
 pub(crate) use count::count;
 pub(crate) use ease::Curve;
 pub(crate) use look::Look;
 pub use preset::Preset;
+pub(crate) use spot::Spot;
 pub(crate) use timeline::{Cue, Timeline};

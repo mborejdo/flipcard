@@ -3,14 +3,20 @@
 //! the preset's stagger; `type` and `karaoke` take each word its letters at the pace, half a beat
 //! more after `, ; :` and a beat after `. ! ?`. `//` waits a beat. A marked word draws its mark
 //! (tints and pulses when bold) once it has landed, the heading's marker once the heading has.
+//!
+//! The kinetic presets know where the words are ([`Timeline::arrange`]): `move` glides the words
+//! the card before has too from there first, then the others come in; `stack` brings line after
+//! line, each read at the pace, the lines in so far moving up by the room the new one takes.
 
 use serde_json::json;
 
-use super::{Curve, Preset, count};
+use super::{Curve, Look, Preset, Spot, count};
 use crate::script::Word;
 
 /// Half-beats a word takes to come in, and a mark to draw.
 const ENTER: f64 = 2.0;
+/// Half-beats a word of the card before glides to its place.
+const GLIDE: f64 = 3.0;
 /// Half-beats a metric counts up.
 const COUNT: f64 = 6.0;
 /// Half-beats of rest after the entrances, at least.
@@ -19,7 +25,7 @@ const REST: f64 = 8.0;
 const LETTERS: f64 = 5.5;
 
 /// One word of a card, in reading order.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Cue {
     /// Its block; 0 is the heading.
     pub block: usize,
@@ -29,6 +35,12 @@ pub(crate) struct Cue {
     pub value: Option<String>,
     /// The word with its marks; `run.pause`: a `//` before it.
     pub word: Word,
+    /// Where it is at rest (kinetic presets).
+    pub spot: Option<Spot>,
+    /// `move`: how it looks where it was on the card before.
+    pub from: Option<Look>,
+    /// `stack`: its line among the words that come in.
+    pub line: usize,
 }
 
 impl Cue {
@@ -62,13 +74,18 @@ pub(crate) struct Timeline {
     half: f64,
     /// Words a minute.
     pace: f64,
+    /// The key press it shows.
+    step: usize,
     cues: Vec<Cue>,
+    /// The heading has a marker.
+    marked: bool,
     /// The half-beat each word starts to come in and the half-beats it takes; `None` for a word
     /// already there.
     starts: Vec<Option<(f64, f64)>>,
+    /// `stack`: each line's first word and its bottom, in points.
+    lines: Vec<(usize, f64)>,
     /// The half-beat the heading's marker starts to draw, if it has one and it comes in.
     mark: Option<f64>,
-    marked: bool,
     /// The half-beat the last entrance (or mark) ends.
     end: f64,
 }
@@ -84,25 +101,106 @@ impl Timeline {
         cues: Vec<Cue>,
         marked: bool,
     ) -> Self {
-        let half = beat / 2.0;
-        // half-beats a letter takes at the pace
-        let letter = if pace > 0.0 {
-            60.0 / (pace * LETTERS) / half
+        let mut timeline = Self {
+            preset,
+            half: beat / 2.0,
+            pace,
+            step,
+            starts: Vec::new(),
+            lines: Vec::new(),
+            mark: None,
+            end: 0.0,
+            marked,
+            cues,
+        };
+        timeline.schedule();
+        timeline
+    }
+
+    /// It times its words by where they are.
+    pub(crate) const fn kinetic(&self) -> bool {
+        self.preset.kinetic()
+    }
+
+    /// The words on screen once it is at rest.
+    pub(crate) fn shown(&self) -> impl Iterator<Item = &Cue> {
+        self.cues
+            .iter()
+            .filter(|c| c.step <= self.step || c.step == usize::MAX)
+    }
+
+    /// Time the words again by where they are: `spots` by word id, and for `move` the words the
+    /// card before shows, by their text. A word glides from the first unused one of its text.
+    pub(crate) fn arrange(&mut self, spots: &[Option<Spot>], before: &[(String, Spot)]) {
+        let mut taken = vec![false; before.len()];
+        let mut last: Option<Spot> = None;
+        for cue in &mut self.cues {
+            cue.spot = spots.get(cue.word.id).copied().flatten();
+            let Some(spot) = cue.spot.filter(|_| cue.step == self.step) else {
+                continue;
+            };
+            let text = &cue.word.run.text;
+            if self.preset == Preset::Move
+                && let Some(((_, was), taken)) = (before.iter().zip(&mut taken))
+                    .find(|((t, _), taken)| !**taken && !text.is_empty() && t == text)
+            {
+                *taken = true;
+                cue.from = Some(spot.from(*was));
+            }
+            if self.preset != Preset::Stack {
+                continue;
+            }
+            // a new line once a word sits lower than half the one before
+            if last.is_none_or(|l| spot.y > l.h.mul_add(0.5, l.y)) {
+                self.lines.push((cue.word.id, 0.0));
+            }
+            if let Some(line) = self.lines.last_mut() {
+                line.1 = line.1.max(spot.y + spot.h);
+            }
+            cue.line = self.lines.len() - 1;
+            last = Some(spot);
+        }
+        self.schedule();
+    }
+
+    /// When every word comes in. The blocks (`stack`: the lines) come in on the beat after the
+    /// one before has landed (`stack`: and been read); `move` glides first.
+    fn schedule(&mut self) {
+        let (preset, half, cues) = (self.preset, self.half, &self.cues);
+        let stack = preset == Preset::Stack;
+        // half-beats a letter and a word take at the pace
+        let at_pace = |per_minute: f64| {
+            if self.pace > 0.0 {
+                60.0 / (self.pace * per_minute) / half
+            } else {
+                0.0
+            }
+        };
+        let letter = at_pace(LETTERS);
+        let read = if stack { at_pace(1.0) } else { 0.0 };
+        let mut starts: Vec<_> = cues
+            .iter()
+            .map(|c| (c.step == self.step && c.from.is_some()).then_some((0.0, GLIDE)))
+            .collect();
+        let glide = if starts.iter().any(Option::is_some) {
+            GLIDE
         } else {
             0.0
         };
-        let mut starts = vec![None; cues.len()];
-        let (mut t, mut landed, mut end, mut mark, mut block) = (0.0, 0.0, 0.0_f64, None, None);
+        let (mut t, mut landed, mut end, mut mark, mut group) = (0.0, glide, glide, None, None);
+        let mut words = 0.0_f64;
         let moving = !matches!(preset, Preset::Still | Preset::Flip);
         for (i, cue) in cues.iter().enumerate() {
-            if cue.step != step || !moving {
+            if cue.step != self.step || !moving || starts[i].is_some() {
                 continue;
             }
-            if block != Some(cue.block) {
-                if block == Some(0) && marked {
+            let key = if stack { cue.line } else { cue.block };
+            if group != Some(key) {
+                if group == Some(0) && self.marked && !stack {
                     mark = Some(landed);
                 }
-                (t, block) = ((landed / 2.0_f64).ceil() * 2.0, Some(cue.block));
+                let next = words.mul_add(read, landed);
+                (t, group, words) = ((next / 2.0_f64).ceil() * 2.0, Some(key), 0.0);
             }
             if cue.word.run.pause {
                 t += 2.0;
@@ -115,25 +213,20 @@ impl Timeline {
             starts[i] = Some((t, len));
             landed = landed.max(t + len);
             end = end.max(t + len + if cue.marked() { ENTER } else { 0.0 });
+            words += 1.0;
             t += if preset.paced() {
                 len + cue.breath()
             } else {
                 f64::from(preset.stagger())
             };
         }
-        if block == Some(0) && marked {
+        // a stacked heading's marker waits for the last line: the lines move it till then
+        if self.marked && (group == Some(0) || (stack && group.is_some())) {
             mark = Some(landed);
         }
-        Self {
-            preset,
-            half,
-            pace,
-            starts,
-            end: mark.map_or(end, |m| end.max(m + ENTER)),
-            mark,
-            marked,
-            cues,
-        }
+        self.starts = starts;
+        self.end = mark.map_or(end, |m| end.max(m + ENTER));
+        self.mark = mark;
     }
 
     /// Seconds of the entrances.
@@ -141,11 +234,11 @@ impl Timeline {
         self.end * self.half
     }
 
-    /// Seconds the scene stays: the entrances, then its new words read at the pace (a paced
-    /// preset read them coming in), at least four beats.
-    pub(crate) fn length(&self, step: usize) -> f64 {
-        let words = self.cues.iter().filter(|c| c.step == step).count() as f64;
-        let read = if self.pace > 0.0 && !self.preset.paced() {
+    /// Seconds the scene stays: the entrances, then its new words read at the pace (`type`,
+    /// `karaoke` and `stack` read them coming in), at least four beats.
+    pub(crate) fn length(&self) -> f64 {
+        let words = self.cues.iter().filter(|c| c.step == self.step).count() as f64;
+        let read = if self.pace > 0.0 && !self.preset.read_in() {
             words * 60.0 / self.pace
         } else {
             0.0
@@ -161,6 +254,14 @@ impl Timeline {
         let p =
             |start: Option<f64>, len: f64| start.map_or(1.0, |s| ((now - s) / len).clamp(0.0, 1.0));
         let draw = Curve::Strong.at(p(self.mark, ENTER));
+        // stack: the lines in so far sit lower by the room of the lines still coming up
+        let sink: f64 = (self.lines.windows(2))
+            .map(|pair| {
+                let ((_, above), (first, bottom)) = (pair[0], pair[1]);
+                let start = self.starts[first].map(|(s, _)| s);
+                (bottom - above) * (1.0 - Curve::Ease.at(p(start, ENTER)))
+            })
+            .sum();
         let mut values = Vec::new();
         let looks: Vec<_> = self
             .cues
@@ -168,14 +269,23 @@ impl Timeline {
             .zip(&self.starts)
             .map(|(cue, &start)| {
                 let (at, len) = start.map_or((None, 1.0), |(s, l)| (Some(s), l));
-                let mut look = cue.value.as_ref().map_or_else(
-                    || self.preset.look(p(at, len), cue.word.letters()),
-                    |value| {
+                let mut look = match (&cue.value, cue.from) {
+                    (Some(value), _) => {
                         values.push(count(value, Curve::Ease.at(p(at, COUNT))));
                         Preset::Rise.look(p(at, ENTER), 1)
                     },
-                );
-                let after = p(at.map(|s| s + len), ENTER);
+                    (None, Some(from)) => from.toward(Curve::Ease.at(p(at, len))),
+                    (None, None) => self.preset.look(p(at, len), cue.word.letters()),
+                };
+                if let Some(spot) = cue.spot.filter(|_| at.is_some()) {
+                    look.y += sink / spot.size;
+                }
+                // a word that glides keeps its marks
+                let after = if cue.from.is_some() {
+                    1.0
+                } else {
+                    p(at.map(|s| s + len), ENTER)
+                };
                 let run = &cue.word.run;
                 if run.bold || run.strike {
                     look.tint = Curve::Ease.at(after);
@@ -255,7 +365,7 @@ mod tests {
         let half_beats = |pace| {
             let timeline =
                 Timeline::new(Preset::Rise, 0.4, pace, 0, words(&[0, 0, 0, 1, 1]), false);
-            (timeline.length(0) / 0.2).round() as u32
+            (timeline.length() / 0.2).round() as u32
         };
         assert_eq!(
             (half_beats(200.0), half_beats(60.0), half_beats(0.0)),
@@ -313,7 +423,7 @@ mod tests {
             let read = 20.0 * 60.0 / pace;
             assert!((timeline.entrances() - read).abs() <= 0.4, "{preset:?}");
             // read coming in: four beats of rest after
-            assert!((timeline.length(0) - timeline.entrances() - 1.6).abs() < 1e-9);
+            assert!((timeline.length() - timeline.entrances() - 1.6).abs() < 1e-9);
         }
     }
 
@@ -382,5 +492,57 @@ mod tests {
         for i in 0..4 {
             assert_eq!(look(0.8, i), serde_json::json!({}), "{i}");
         }
+    }
+
+    /// A word box of 10 pt text at (`x`, `y`).
+    fn at(x: f64, y: f64) -> Spot {
+        Spot {
+            x,
+            y,
+            w: 30.0,
+            h: 7.0,
+            size: 10.0,
+        }
+    }
+
+    #[test]
+    fn move_glides_the_shared_words_first_then_the_others_come_in() {
+        let mut cues = vec![cue(1, "a"), cue(1, "new"), cue(1, "b")];
+        for (i, cue) in cues.iter_mut().enumerate() {
+            cue.word.id = i;
+        }
+        let mut timeline = Timeline::new(Preset::Move, 0.4, 200.0, 0, cues, false);
+        let before = [("b".to_string(), at(0.0, 0.0))];
+        let spots = [at(0.0, 20.0), at(40.0, 20.0), at(80.0, 20.0)];
+        timeline.arrange(&spots.map(Some), &before);
+        // "b" glides 80 pt left, 20 pt up: 8 em and 2 em at 10 pt
+        assert_eq!(
+            starts(&timeline),
+            [Some(4.0), Some(5.0), Some(0.0)],
+            "the others on the beat after the glide"
+        );
+        let state: serde_json::Value = serde_json::from_str(&timeline.state(0.0)).unwrap();
+        assert_eq!(state["w"][2], serde_json::json!({ "x": -8.0, "y": -2.0 }));
+        assert_eq!(state["w"][0]["o"], 0.0);
+    }
+
+    #[test]
+    fn stack_brings_line_after_line_and_the_lines_in_move_up() {
+        let mut cues = words(&[1, 1, 2]);
+        for (i, cue) in cues.iter_mut().enumerate() {
+            cue.word.id = i;
+        }
+        let mut timeline = Timeline::new(Preset::Stack, 0.4, 200.0, 0, cues, false);
+        let spots = [at(0.0, 0.0), at(40.0, 0.0), at(0.0, 12.0)];
+        timeline.arrange(&spots.map(Some), &[]);
+        // line one: 2 words take 0.6 s = 3 half-beats to read after landing at 2: on to 6
+        assert_eq!(starts(&timeline), [Some(0.0), Some(0.0), Some(6.0)]);
+        let y = |t: f64, i: usize| {
+            let state: serde_json::Value = serde_json::from_str(&timeline.state(t)).unwrap();
+            state["w"][i]["y"].as_f64().unwrap_or(0.0)
+        };
+        // the first line sits a line (12 pt) lower till the second comes up
+        assert_eq!((y(0.0, 0), y(1.2, 0), y(2.0, 0)), (1.2, 1.2, 0.0));
+        assert_eq!((y(1.2, 2), timeline.length()), (1.2, (8.0 + 8.0) * 0.2));
     }
 }

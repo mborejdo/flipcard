@@ -54,13 +54,19 @@ for the film, `:::{scene}` for one slide:
 | `still` | all there at once |
 | `type` | letter by letter at `pace`, an accent caret blinking on the beat |
 | `karaoke` | all there in muted, each word filled with ink as it is read at `pace` |
+| `move` | magic move: a word the scene before shows too glides from there, at its size then; the others fade out in the transition and rise in after |
+| `stack` | line by line from below, each read at `pace`; the lines in so far move up to make room |
 
 Time runs in beats (0.4 s, `:beat:` changes it). The heading comes in first, then each block on
 the beat after the one before has landed; inside a block a word follows the last by half a beat.
 `type` and `karaoke` give each word its letters at `pace` (5.5 letters a word), half a beat more
 after `, ; :` and a beat after `. ! ?`. `//` between words waits one more beat and is not shown. A
-scene then holds for its words read at `pace` (after `type` and `karaoke`: they were read coming
-in), at least four beats; `hold` is the floor when set. `enter` is for `flip` only.
+scene then holds for its words read at `pace` (after `type`, `karaoke` and `stack`: they were read
+coming in), at least four beats; `hold` is the floor when set. `enter` is for `flip` only.
+
+`move` and `stack` lay the card out once more to find where the words are. `move` matches words
+by their text, each to the first unused one of the scene before; the glide takes a beat and a
+half, then the other words come in. A later key press of a slide brings its words as `rise` does.
 
 Marks draw once their word has landed:
 

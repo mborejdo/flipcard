@@ -38,6 +38,16 @@ impl Default for Look {
 }
 
 impl Look {
+    /// From this look to rest, `e` (0 to 1) of the way: where it is and its size.
+    pub(crate) fn toward(self, e: f64) -> Self {
+        Self {
+            x: self.x * (1.0 - e),
+            y: self.y * (1.0 - e),
+            s: (1.0 - self.s).mul_add(e, self.s),
+            ..Self::default()
+        }
+    }
+
     /// The look as JSON: values rounded to 1e-4, a field at its default left out.
     pub(crate) fn json(self) -> Value {
         let rest = Self::default();

@@ -12,10 +12,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 - Marks in motion, drawn once the word has landed: `**bold**` turns to the accent and pulses,
   `==marked==` gets an accent band, `__underlined__` a line from the left, `~~struck~~` a line
   through and muted.
-- `examples/phone` shows every mark, `type` and `karaoke`.
+- `examples/phone` shows every mark, `type`, `karaoke`, `move` and `stack`.
+- Presets `move` (magic move: a word the scene before shows too glides from where it was, at its
+  size then; the others come in after) and `stack` (line by line from below at the pace, the
+  lines in so far moving up). Word positions come from Typst (typstkit `Engine::query`).
+
+### Fixed
+
+- A follow-on page's heading stays where the slide's first page has it.
+- A mark over several words (`~~big bang~~`) runs on over the spaces between them.
+- A wrapped list item hangs under its first word, not under its bullet.
 
 ### Changed
 
+- On presiterm v0.4.0 (typstkit `Engine::query`).
 - On presiterm v0.3.0: deckmark keeps `==`, `__` and `~~` apart and strips `//`, so flipkit no
   longer reads headings itself.
 - One Typst engine draws every frame side by side; Typst's cache is evicted per chunk. No engine

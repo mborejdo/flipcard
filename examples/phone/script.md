@@ -27,6 +27,15 @@ A short change // is a **short** read.
 
 ---
 
+# Small steps
+
+:::{scene} move
+:::
+
+A short read is a **fast** review.
+
+---
+
 # Mark it
 
 :::{scene} rise
@@ -53,6 +62,18 @@ Write the test first, then the code.
 :::
 
 Small, clear steps. Every day.
+
+---
+
+# How it lands
+
+:::{scene} stack
+:::
+
+Write it.
+Test it.
+Ship it.
+Sleep well.
 
 ---
 

@@ -60,7 +60,8 @@ hold = 5                  # also format, safe, preset, fps, width, enter, fade, 
 - `flipkit` draws every slide at every build-in instant as a Typst card (`film.typ`, in the
   deck's tokens) and times the scenes. With a motion preset Rust owns the time: the card is laid
   out once at rest, and per frame a small JSON of word looks moves, scales and fades the words
-  inside their boxes (`typ/motion.typ`), so nothing reflows. Frames are drawn side by side on
+  inside their boxes (`typ/motion.typ`), so nothing reflows. `move` and `stack` also ask Typst
+  where each word is (its metadata) and time the words by that. Frames are drawn side by side on
   one Typst engine and stream to the GIF and MP4 encoders on threads of their own; a
   frame that stays is drawn once.
 - `filmstrip` writes the GIF (one learned palette, delta frames) and H.264 in an MP4.

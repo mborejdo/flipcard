@@ -1,6 +1,7 @@
 //! A card: one page of a slide at one key press, ready to draw at any frame of its build-in.
 //! Flip cards are timed by Typst (`frame` of `frames`); motion cards by a [`Timeline`], one
-//! state per frame. A tall slide that doesn't fit pages on into follow-on cards.
+//! state per frame; kinetic ones by where their words are, too. A tall slide that doesn't fit
+//! pages on into follow-on cards, the heading where the first page has it.
 
 use anyhow::{Context, Result};
 use deckmark::deck::{Block, Deck, Loaded, Slide, Span};
@@ -9,7 +10,7 @@ use deckmark::fragments;
 use serde_json::{Value, json};
 use typstkit::{Engine, Input, Main};
 
-use crate::motion::{Preset, Timeline};
+use crate::motion::{Preset, Spot, Timeline};
 use crate::script::{self, Scene};
 use crate::{Format, Frame, Options, Overflow};
 
@@ -32,6 +33,8 @@ pub(crate) struct Page {
     index: usize,
     /// A follow-on page: its heading is already there.
     more: bool,
+    /// Points the heading moves down to sit where the slide's first page has it.
+    lift: f64,
 }
 
 /// The pictures, diagrams and logo of a card as `sys.inputs` entries: key and bytes.
@@ -48,6 +51,8 @@ pub(crate) struct Card {
     bytes: Media,
     /// Every build-in frame's state (motion); empty for flip.
     pub states: Vec<String>,
+    /// What the states come from (motion).
+    timeline: Option<Timeline>,
     /// Build-in frames; each stays `ticks` frames, the scene `hold` seconds.
     pub frames: usize,
     pub ticks: usize,
@@ -82,6 +87,36 @@ impl Card {
             .document_with(Main::Source(CARD), &inputs)
             .with_context(|| format!("slide {} ({})", self.slide + 1, self.title))?;
         Ok(document.pages().len())
+    }
+
+    /// Where its words are at rest, by id (motion).
+    fn spots(&self, engine: &Engine) -> Result<Vec<Option<Spot>>> {
+        let last = self.frames - 1;
+        let number = last.to_string();
+        let found = engine
+            .query(Main::Source(CARD), &self.inputs(last, &number), "word")
+            .with_context(|| format!("slide {} ({})", self.slide + 1, self.title))?;
+        let mut spots = Vec::new();
+        for f in found.iter().filter(|f| f.page == 1) {
+            if let Some((id, spot)) = Spot::read(&f.value, f.x, f.y) {
+                spots.resize(spots.len().max(id + 1), None);
+                spots[id] = Some(spot);
+            }
+        }
+        Ok(spots)
+    }
+
+    /// The words it shows at rest, by their text, and where they are.
+    fn shown(&self, engine: &Engine) -> Result<Vec<(String, Spot)>> {
+        let Some(timeline) = &self.timeline else {
+            return Ok(Vec::new());
+        };
+        let spots = self.spots(engine)?;
+        let spot = |id: usize| spots.get(id).copied().flatten();
+        Ok(timeline
+            .shown()
+            .filter_map(|c| Some((c.word.run.text.clone(), spot(c.word.id)?)))
+            .collect())
     }
 
     /// The `sys.inputs` of build-in frame `frame`, `number` its digits.
@@ -150,20 +185,54 @@ impl<'a> Maker<'a> {
     }
 
     /// Every scene of the film: every page at every key press. A slide that doesn't fit is an
-    /// error naming it (all of them).
+    /// error naming it (all of them). A kinetic card is timed by where its words are, and by
+    /// where the card before has them.
     pub(crate) fn cards(&mut self, engine: &Engine) -> Result<Vec<Card>> {
-        let (pages, overflows) = self.paged(engine)?;
+        let (mut pages, overflows) = self.paged(engine)?;
         if !overflows.is_empty() {
             let lines: Vec<String> = overflows.iter().map(ToString::to_string).collect();
             anyhow::bail!("{}", lines.join("\n"));
         }
-        let mut cards = Vec::new();
+        self.pin(engine, &mut pages)?;
+        let mut cards: Vec<Card> = Vec::new();
         for page in &pages {
             for step in 0..=fragments(&page.slide) {
-                cards.push(self.card(page, step)?);
+                let mut card = self.card(page, step)?;
+                if card.timeline.as_ref().is_some_and(Timeline::kinetic) {
+                    let before = match cards.last() {
+                        Some(last) if step == 0 => last.shown(engine)?,
+                        _ => Vec::new(),
+                    };
+                    let spots = card.spots(engine)?;
+                    if let Some(timeline) = card.timeline.as_mut() {
+                        timeline.arrange(&spots, &before);
+                        (card.states, card.frames, card.hold) = film(timeline, self.options);
+                    }
+                }
+                cards.push(card);
             }
         }
         Ok(cards)
+    }
+
+    /// Lift the heading of every follow-on page to where its slide's first page has it.
+    fn pin(&mut self, engine: &Engine, pages: &mut [Page]) -> Result<()> {
+        let mut first = None;
+        for i in 0..pages.len() {
+            let split = pages[i].more || pages.get(i + 1).is_some_and(|p| p.more);
+            if !split || pages[i].slide.heading.is_none() {
+                continue;
+            }
+            // the heading's first word is word 0
+            let spots = self.card(&pages[i], 0)?.spots(engine)?;
+            let y = spots.first().copied().flatten().map(|s| s.y);
+            match (pages[i].more, first, y) {
+                (false, _, _) => first = y,
+                (true, Some(first), Some(y)) => pages[i].lift = first - y,
+                _ => {},
+            }
+        }
+        Ok(())
     }
 
     /// The pages of every slide, and the slides that don't fit: a tall one pages on after as
@@ -176,6 +245,7 @@ impl<'a> Maker<'a> {
                 slide: slide.clone(),
                 index,
                 more: false,
+                lift: 0.0,
             };
             loop {
                 let spill = self.spill(engine, &page)?;
@@ -261,16 +331,20 @@ impl<'a> Maker<'a> {
         if let Some(logo) = &self.logo {
             bytes.push(("logo".into(), logo.clone()));
         }
-        let (states, frames, ticks, hold) = if preset == Preset::Flip {
+        if page.lift != 0.0 {
+            card["lift"] = page.lift.into();
+        }
+        let (states, frames, ticks, hold, timeline) = if preset == Preset::Flip {
             let frames = ((o.enter * f32::from(o.fps)).round() as usize).max(1);
             // the hold, or longer when reading the words at `pace` takes more
             let hold = o.hold.unwrap_or(HOLD);
             let read = words(slide, step) as f32 * 60.0 / o.pace;
             let hold = if o.pace > 0.0 { hold.max(read) } else { hold };
-            (Vec::new(), frames, TICKS, hold)
+            (Vec::new(), frames, TICKS, hold, None)
         } else {
-            let (states, frames, hold) = moving(&mut card, page, step, &scene, preset, o);
-            (states, frames, 1, hold)
+            let timeline = timeline(&mut card, page, step, &scene, preset, o);
+            let (states, frames, hold) = film(&timeline, o);
+            (states, frames, 1, hold, Some(timeline))
         };
         let [top, right, bottom, left] = o.safe.insets();
         let logical = |px: u32| (px as f32 / SCALE).round().to_string();
@@ -293,6 +367,7 @@ impl<'a> Maker<'a> {
             text,
             bytes,
             states,
+            timeline,
             frames,
             ticks,
             hold,
@@ -300,16 +375,15 @@ impl<'a> Maker<'a> {
     }
 }
 
-/// A motion card: its words numbered in `card`, the state of every build-in frame, how many
-/// there are and the seconds the scene stays, on whole frames.
-fn moving(
+/// A motion card's timeline, its words numbered in `card`.
+fn timeline(
     card: &mut Value,
     page: &Page,
     step: usize,
     scene: &Scene,
     preset: Preset,
     o: &Options,
-) -> (Vec<String>, usize, f32) {
+) -> Timeline {
     card["motion"] = true.into();
     let mut cues = script::number(card);
     for cue in cues.iter_mut().filter(|c| page.more && c.block == 0) {
@@ -319,13 +393,18 @@ fn moving(
     let marked = heading.is_some_and(|h| o.format == Format::Tall || h.iter().any(|s| s.highlight));
     let wpm = scene.pace.unwrap_or_else(|| f64::from(o.pace));
     let beat = scene.beat.unwrap_or(BEAT);
-    let timeline = Timeline::new(preset, beat, wpm, step, cues, marked);
+    Timeline::new(preset, beat, wpm, step, cues, marked)
+}
+
+/// The state of every build-in frame of `timeline`, how many there are and the seconds the scene
+/// stays, on whole frames.
+fn film(timeline: &Timeline, o: &Options) -> (Vec<String>, usize, f32) {
     let fps = f64::from(o.fps);
     let frames = timeline.entrances().mul_add(fps, -1e-6).ceil().max(0.0) as usize + 1;
     let states = (0..frames)
         .map(|k| timeline.state(k as f64 / fps))
         .collect();
-    let length = timeline.length(step).max(o.hold.map_or(0.0, f64::from));
+    let length = timeline.length().max(o.hold.map_or(0.0, f64::from));
     (states, frames, ((length * fps).round() / fps) as f32)
 }
 
@@ -562,11 +641,13 @@ mod tests {
             items.collect::<Vec<_>>().join("\n")
         ));
         let engine = deckmark::faces::engine(&[]).unwrap();
-        let (pages, overflows) = Maker::new(&loaded, &options)
-            .unwrap()
-            .paged(&engine)
-            .unwrap();
+        let mut maker = Maker::new(&loaded, &options).unwrap();
+        let (mut pages, overflows) = maker.paged(&engine).unwrap();
         assert!(overflows.is_empty(), "{overflows:?}");
+        maker.pin(&engine, &mut pages).unwrap();
+        let mut heading = |page: &Page| maker.card(page, 0).unwrap().spots(&engine).unwrap()[0];
+        let at: Vec<f64> = pages.iter().map(|p| heading(p).unwrap().y).collect();
+        assert!(at.iter().all(|y| (y - at[0]).abs() < 0.01), "{at:?}");
         assert!(pages.len() > 1);
         assert!(
             pages
