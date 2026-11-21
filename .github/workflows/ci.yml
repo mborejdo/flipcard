@@ -42,3 +42,29 @@ jobs:
           RUSTDOCFLAGS: -D warnings
       - name: deny
         run: cargo deny check
+      # The typst diagrams import fletcher from Typst Universe: the first run downloads it.
+      - name: lint and render the example
+        run: |
+          cargo run --locked -p flipcard -- lint examples/film/slides.md
+          cargo run --locked -p flipcard -- examples/film/slides.md --gif --mp4 --docx --pdf --cards target/demo/cards --out target/demo
+
+  # Temporary, until presiterm drops its film: the example rendered by flipcard and by
+  # presiterm v0.2.0 is the same bytes, every file.
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: mborejdo/presiterm
+          ref: v0.2.0
+          path: presiterm
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target\npresiterm -> target"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: render with both and compare
+        run: |
+          cargo run --release --locked -p flipcard -- examples/film/slides.md --gif --mp4 --docx --pdf --cards "$PWD/out/flipcard/cards" --out "$PWD/out/flipcard"
+          (cd presiterm && cargo run --release --locked -p presiterm -- film examples/film/slides.md --gif --mp4 --docx --pdf --cards "$GITHUB_WORKSPACE/out/presiterm/cards" --out "$GITHUB_WORKSPACE/out/presiterm")
+          diff -r out/presiterm out/flipcard
