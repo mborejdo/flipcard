@@ -1,0 +1,71 @@
+# flipcard: a Markdown script in, a flip-card film out. Every slide is a card drawn by Typst; the
+# cards go out as an animated GIF, an MP4, a Word file that plays the GIF and a PDF that plays the
+# MP4.
+[workspace]
+resolver = "3"
+members = ["packages/filmstrip"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+authors = ["Michael Borejdo <mborejdo@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/mborejdo/flipcard"
+homepage = "https://github.com/mborejdo/flipcard"
+
+[workspace.dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+
+# The containers (filmstrip): the GIF, the MP4, the Word and the PDF, pure Rust.
+png = { version = "0.17", default-features = false }
+gif = { version = "0.13", default-features = false, features = ["std"] }
+color_quant = "1"
+rusty_h264-encoder = "0.17"
+rusty_h264-common = "0.17"
+mp4 = "0.14"
+bytes = "1"
+docx-rs = "0.4"
+zip = { version = "8", default-features = false, features = ["deflate"] }
+lopdf = { version = "0.46", default-features = false }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unreachable_pub = "warn"
+missing_debug_implementations = "warn"
+missing_docs = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+# Unavoidable with many transitive deps (the Typst stack trails ours in many crates).
+multiple_crate_versions = "allow"
+module_name_repetitions = "allow"
+# No required `# Errors` / `# Panics` sections, no doc-paragraph length limit.
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+too_long_first_doc_paragraph = "allow"
+# Contradicts rustc `unreachable_pub`, which is kept.
+redundant_pub_crate = "allow"
+# Stricter than the groups: no panicking shortcuts or stray output in library code (tests are
+# exempt, see clippy.toml), and every `#[allow]` says why.
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+allow_attributes_without_reason = "warn"
+
+[workspace.lints.rustdoc]
+all = { level = "warn", priority = -1 }
+
+[profile.release]
+lto = "thin"
+strip = true
