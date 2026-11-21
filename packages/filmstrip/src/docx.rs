@@ -1,4 +1,4 @@
-//! The Word file: A4 landscape, the GIF as the only picture, a line of links under it.
+//! The Word file: A4, landscape or portrait as the film, the GIF as the only picture, a line of links under it.
 //! docx-rs writes the picture as a PNG part; a second pass over the zip swaps the bytes for the
 //! animated GIF (every frame inside the file) and fixes the relationship and the content types.
 //! Word for Mac and current Word for Windows play it in place.
@@ -16,8 +16,8 @@ use crate::Frame;
 
 const TWIP_PER_CM: f64 = 566.93;
 const EMU_PER_TWIP: u32 = 635;
-const A4_W: f64 = 29.7; // landscape: width x height in cm
-const A4_H: f64 = 21.0;
+/// A4, long and short side in cm.
+const A4: (f64, f64) = (29.7, 21.0);
 const MARGIN_CM: f64 = 1.2;
 /// The GIF's part name inside the package.
 const GIF_PART: &str = "word/media/film.gif";
@@ -76,8 +76,10 @@ pub fn wrap(poster: &Frame, gif: &[u8], links: &[Link], style: &Style) -> Result
     }
     let poster_png = poster.png()?;
 
-    let page_w = (A4_W * TWIP_PER_CM).round() as u32;
-    let page_h = (A4_H * TWIP_PER_CM).round() as u32;
+    let portrait = poster.height > poster.width;
+    let (page_w, page_h) = if portrait { (A4.1, A4.0) } else { A4 };
+    let page_w = (page_w * TWIP_PER_CM).round() as u32;
+    let page_h = (page_h * TWIP_PER_CM).round() as u32;
     let margin = (MARGIN_CM * TWIP_PER_CM).round() as u32;
     let text_w = page_w - 2 * margin;
     let text_h = page_h - 2 * margin;
@@ -110,7 +112,11 @@ pub fn wrap(poster: &Frame, gif: &[u8], links: &[Link], style: &Style) -> Result
     let mut docx = Docx::new()
         .default_fonts(fonts)
         .page_size(page_w, page_h)
-        .page_orient(PageOrientationType::Landscape)
+        .page_orient(if portrait {
+            PageOrientationType::Portrait
+        } else {
+            PageOrientationType::Landscape
+        })
         .page_margin(
             PageMargin::new()
                 .top(margin)
@@ -315,6 +321,15 @@ mod tests {
             assert_eq!(ids.len(), 12);
             assert!(ids.is_sorted(), "{ids:?}");
         }
+    }
+
+    #[test]
+    fn a_tall_film_gets_a_portrait_page() {
+        let poster = Frame::solid(18, 32, [20, 30, 40]);
+        let gif = crate::gif::encode(std::slice::from_ref(&poster), &[], 10, 4).unwrap();
+        let docx = wrap(&poster, &gif, &[], &Style::default()).unwrap();
+        let body = String::from_utf8(part(&docx, "word/document.xml").unwrap()).unwrap();
+        assert!(body.contains("w:orient=\"portrait\""), "{body}");
     }
 
     #[test]
