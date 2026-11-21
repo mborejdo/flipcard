@@ -2,7 +2,7 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow semver.
 
-## Unreleased
+## 0.2.0 - 2026-11-21
 
 ### Added
 
@@ -52,7 +52,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 The wide example's GIF, MP4 and cards are the same bytes as before.
 
-## 0.1.0 - unreleased
+## 0.1.0 - 2026-11-21
 
 ### Added
 
