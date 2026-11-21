@@ -72,14 +72,14 @@
   if sp.italic { body = emph(body) }
   body
 }
-// the first `n` letters of word `w`, its tail's included
+// the first `n` letters of word `w`, then of its tail
 #let typed(w, n) = {
   let (body, tail) = (w.text.codepoints(), w.at("tail", default: "").codepoints())
   let k = calc.min(n, body.len())
-  [#styled((..w, text: body.slice(0, k).sum(default: "")))#tail.slice(0, n - k).sum(default: "")]
+  (styled((..w, text: body.slice(0, k).sum(default: ""))), tail.slice(0, n - k).sum(default: ""))
 }
 #let spans(xs, heading: false) = if moving {
-  xs.map(w => word(w, [#styled(w)#w.at("tail", default: "")], typed: n => typed(w, n), heading: heading)).join([ ])
+  xs.map(w => word(w, styled(w), tail: w.at("tail", default: ""), typed: n => typed(w, n), heading: heading)).join([ ])
 } else {
   xs.map(sp => if sp.underline or sp.highlight { marked(styled(sp)) } else { styled(sp) }).join()
 }

@@ -94,6 +94,11 @@ impl Word {
     }
 }
 
+/// Punctuation that ends a word: kept out of its marks.
+const TRAILING: [char; 12] = [
+    ',', '.', ';', ':', '!', '?', '"', '\'', ')', ']', '\u{201d}', '\u{2019}',
+];
+
 /// The words of `runs`; `pause` carries a `//` over to the next word.
 pub(crate) fn tokenize(runs: &[Run], pause: &mut bool) -> Vec<Word> {
     let mut words: Vec<Word> = Vec::new();
@@ -112,14 +117,24 @@ pub(crate) fn tokenize(runs: &[Run], pause: &mut bool) -> Vec<Word> {
                     }
                     last.tail.push_str(token);
                 },
-                _ => words.push(Word {
-                    run: Run {
-                        text: token.to_string(),
-                        pause: std::mem::take(pause),
-                        ..run.clone()
-                    },
-                    ..Word::default()
-                }),
+                _ => {
+                    // trailing punctuation goes to the tail, so a mark leaves it out
+                    let cut = token.trim_end_matches(TRAILING);
+                    let cut = if run.code || cut.is_empty() {
+                        token
+                    } else {
+                        cut
+                    };
+                    words.push(Word {
+                        run: Run {
+                            text: cut.to_string(),
+                            pause: std::mem::take(pause),
+                            ..run.clone()
+                        },
+                        tail: token[cut.len()..].to_string(),
+                        ..Word::default()
+                    });
+                },
             }
         }
         if !run.text.is_empty() {
@@ -255,9 +270,14 @@ mod tests {
             (",", "")
         );
         assert!(heading[4].run.pause && !heading[3].run.pause);
-        let body = words("Pick **one** - then //**ship**.");
-        assert_eq!(texts(&body), ["Pick", "one -", "then", "ship."]);
+        let body = words("Pick **one** - then //**ship**. **Done!** `f();`");
+        assert_eq!(
+            texts(&body),
+            ["Pick", "one -", "then", "ship.", "Done!", "f();"]
+        );
         assert!(body[1].run.bold && body[3].run.bold && body[3].run.pause);
+        let tails: Vec<_> = body.iter().map(|w| w.tail.as_str()).collect();
+        assert_eq!(tails, ["", " -", "", ".", "!", ""]);
     }
 
     #[test]

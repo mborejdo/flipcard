@@ -527,6 +527,34 @@ mod tests {
     }
 
     #[test]
+    fn typed_letters_sit_where_they_are_at_rest() {
+        let (loaded, options) =
+            tall("# Type\n\n:::{scene} type\n:::\n\nWrite the test **first**, then the code.\n");
+        let engine = deckmark::faces::engine(&[]).unwrap();
+        let mut maker = Maker::new(&loaded, &options).unwrap();
+        let (pages, _) = maker.paged(&engine).unwrap();
+        let mut card = maker.card(&pages[0], 0).unwrap();
+        let still = card.draw(&engine, card.frames - 1).unwrap();
+        let ground = &still.rgb[..3];
+        let states = std::mem::take(&mut card.states);
+        for state in states.iter().step_by(3) {
+            // the letters only, no caret or marks: every pixel is the still's or the ground
+            let mut state: Value = serde_json::from_str(state).unwrap();
+            state.as_object_mut().unwrap().remove("c");
+            for look in state["w"].as_array_mut().unwrap() {
+                look.as_object_mut()
+                    .unwrap()
+                    .retain(|key, _| key == "chars");
+            }
+            card.states = vec![state.to_string()];
+            let frame = card.draw(&engine, 0).unwrap();
+            let moved = frame.rgb.chunks(3).zip(still.rgb.chunks(3));
+            let off = moved.filter(|(a, b)| a != b && *a != ground).count();
+            assert_eq!(off, 0, "{state}");
+        }
+    }
+
+    #[test]
     fn a_tall_slide_that_does_not_fit_pages_on_with_its_heading() {
         let items = (1..=30).map(|i| format!("- point number {i}"));
         let (loaded, options) = tall(&format!(
