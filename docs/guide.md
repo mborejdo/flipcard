@@ -5,11 +5,12 @@ flipcard talk/slides.md                      # talk/slides.gif
 flipcard talk/slides.md --mp4 --docx --pdf   # the MP4, a Word file, a PDF
 flipcard talk/slides.md --out dist           # into dist/ instead of next to the deck
 flipcard talk/slides.md --cards dist/cards   # every card, fully built, as PNG
+flipcard talk/slides.md --format tall        # 9:16 for a phone
 flipcard talk/slides.md --preview            # play the GIF inline in WezTerm or iTerm2
 flipcard lint talk/slides.md                 # which cards do not fit
 ```
 
-A presiterm deck renders as a film: every slide a 16:9 card in the deck's tokens (`[theme]`,
+A presiterm deck renders as a film: every slide a card in the deck's tokens (`[theme]`,
 `theme: light`), drawn in process by Typst. Every key press is a build-in:
 
 | in the deck | in the film |
@@ -29,27 +30,36 @@ A presiterm deck renders as a film: every slide a 16:9 card in the deck's tokens
 * `slides.gif`: one learned palette, only changed pixels stored (14 cards at 640 px: about
   1 MB). Loops.
 * `slides.mp4` (`--mp4`): H.264, pure Rust, same frames.
-* `slides.docx` (`--docx`): A4 landscape, the GIF and a line of links. Word for Mac and current
+* `slides.docx` (`--docx`): A4 landscape (portrait for tall), the GIF and a line of links. Word for Mac and current
   Word for Windows play the GIF in place.
-* `slides.pdf` (`--pdf`): A4 landscape, the first card as poster, title line and links. Acrobat
+* `slides.pdf` (`--pdf`): A4 landscape (portrait for tall), the first card as poster, title line and links. Acrobat
   plays and loops the MP4 over it on open; other viewers show the poster.
 * `--cards DIR`: every scene's fully built card as `card03-007.png` (slide 3, scene 7).
 
 ## Timing and size
 
 Each value is a flag, a frontmatter key or a `[film]` key in `flipcard.toml`. Flag beats
-frontmatter beats file.
+frontmatter beats file beats the format's defaults.
 
 | value | flag | default | what |
 |:--|:--|--:|:--|
+| format | `--format` | wide | `wide` (16:9), `tall` (9:16) or `square` (1:1) |
+| safe | `--safe` | none | `phone` keeps the content clear of a phone app's bars, captions and buttons |
 | fps | `--fps` | 10 | frames per second |
-| width | `--width` | 640 | pixels, even (the MP4 needs it); height follows 16:9 |
+| width | `--width` | 640 | pixels, even (the MP4 needs it); the height follows the format |
 | hold | `--hold` | 7 | seconds every scene stays, build-in included |
 | enter | `--enter` | 1.6 | seconds of build-in at the start of every scene |
 | fade | `--fade` | 0.4 | seconds a transition between scenes takes |
 | transition | `--transition` | fade | `fade`, `wipe`, `push`, `pixelize`, `circle`, `split` or `cut` |
 | pace | `--pace` | 200 | words per minute; a scene with more words than `hold` covers stays longer |
 | colours | `--colours` | 48 | colours of the GIF palette, 2 to 255 |
+| gif-width | `--gif-width` | width | the GIF scaled down by a whole factor, at least this wide |
+| gif-fps | `--gif-fps` | fps | the GIF takes every n-th frame |
+
+`tall` sets width 1080 (1080x1920), fps 30, fade 0.2, safe `phone`, gif-width 360 and gif-fps
+15: the MP4 is the film for the phone, the GIF a preview. `square` is the same at 1080x1080
+without the safe area. The card's content sits inside the safe area, centred; what doesn't fit
+there is an overflow, as on a wide card.
 
 `hold` is the minimum: a scene with more words than `hold` covers at `pace` (first step: the
 heading and all shown at once; then each `+` bullet) stays for its reading time. `pace: 0` holds
