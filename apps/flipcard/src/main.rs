@@ -29,6 +29,13 @@ fn run() -> Result<i32> {
             for overflow in &overflows {
                 println!("{overflow}");
             }
+            for (slide, title, words) in flipkit::crowded(&loaded, &options) {
+                println!(
+                    "slide {} ({title}): {words} words on one tall screen, more than {}; it pages on, or trim it",
+                    slide + 1,
+                    flipkit::TALL_WORDS
+                );
+            }
             println!(
                 "{} of {} cards overflow",
                 overflows.len(),

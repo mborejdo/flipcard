@@ -34,7 +34,7 @@ impl Format {
 
     /// What the format sets below the config: wide is the built-in, tall and square are
     /// 1080 px at 30 fps with a 0.2 s fade and a 360 px GIF at 15 fps, tall in the phone's safe
-    /// area.
+    /// area with words that rise.
     #[must_use]
     pub fn defaults(self) -> Settings {
         let phone = Settings {
@@ -50,6 +50,7 @@ impl Format {
             Self::Wide => Settings::default(),
             Self::Tall => Settings {
                 safe: Some(Safe::Phone),
+                preset: Some(crate::Preset::Rise),
                 ..phone
             },
             Self::Square => phone,

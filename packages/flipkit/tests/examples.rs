@@ -14,7 +14,7 @@ fn the_film_example_fits_its_cards() {
     assert!(overflows.is_empty(), "{overflows:?}");
     assert_eq!(
         (options.hold, options.enter),
-        (4.0, 1.2),
+        (Some(4.0), 1.2),
         "from the frontmatter"
     );
 }

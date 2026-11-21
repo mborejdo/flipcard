@@ -1,0 +1,511 @@
+//! A card: one page of a slide at one key press, ready to draw at any frame of its build-in.
+//! Flip cards are timed by Typst (`frame` of `frames`); motion cards by a [`Timeline`], one
+//! state per frame. A tall slide that doesn't fit pages on into follow-on cards.
+
+use anyhow::{Context, Result};
+use deckmark::deck::{Block, Deck, Loaded, Slide, Span};
+use deckmark::diagram::Assets;
+use deckmark::fragments;
+use serde_json::{Value, json};
+use typstkit::{Engine, Input, Main};
+
+use crate::motion::{Preset, Timeline};
+use crate::script::{self, Scene};
+use crate::{CARD, Format, Frame, Options, Overflow, SCALE, TICKS, theme_json};
+
+/// Seconds of a beat, unless a scene says otherwise.
+const BEAT: f64 = 0.4;
+
+/// A slide as it goes on screen: the whole slide, or one page of it.
+#[derive(Clone, Debug)]
+pub(crate) struct Page {
+    slide: Slide,
+    /// The slide's 0-based index in the deck.
+    index: usize,
+    /// A follow-on page: its heading is already there.
+    more: bool,
+}
+
+/// The pictures, diagrams and logo of a card as `sys.inputs` entries: key and bytes.
+type Media = Vec<(String, Vec<u8>)>;
+
+/// One scene of the film.
+#[derive(Debug)]
+pub(crate) struct Card {
+    /// The slide's 0-based index in the deck.
+    pub slide: usize,
+    title: String,
+    /// The `sys.inputs` strings, all but `frame` and `state`.
+    text: Vec<(&'static str, String)>,
+    bytes: Media,
+    /// Every build-in frame's state (motion); empty for flip.
+    pub states: Vec<String>,
+    /// Build-in frames; each stays `ticks` frames, the scene `hold` seconds.
+    pub frames: usize,
+    pub ticks: usize,
+    pub hold: f32,
+}
+
+impl Card {
+    /// Draw build-in frame `frame`.
+    pub(crate) fn draw(&self, engine: &Engine, frame: usize) -> Result<Frame> {
+        let number = frame.to_string();
+        let raster = engine
+            .raster(
+                Main::Source(CARD),
+                &self.inputs(frame, &number),
+                72.0 * SCALE,
+            )
+            .with_context(|| format!("slide {} ({})", self.slide + 1, self.title))?;
+        Ok(Frame {
+            width: raster.width,
+            height: raster.height,
+            rgb: raster.rgb,
+        })
+    }
+
+    /// Pages the fully built card takes; 1 when it fits.
+    fn pages(&self, engine: &Engine) -> Result<usize> {
+        let last = self.frames - 1;
+        let number = last.to_string();
+        let document = engine
+            .document_with(Main::Source(CARD), &self.inputs(last, &number))
+            .with_context(|| format!("slide {} ({})", self.slide + 1, self.title))?;
+        Ok(document.pages().len())
+    }
+
+    /// The `sys.inputs` of build-in frame `frame`, `number` its digits.
+    fn inputs<'a>(&'a self, frame: usize, number: &'a str) -> Vec<(&'a str, Input<'a>)> {
+        let state = self.states.get(frame).map(|s| ("state", Input::Text(s)));
+        self.text
+            .iter()
+            .map(|(key, value)| (*key, Input::Text(value)))
+            .chain([("frame", Input::Text(number))])
+            .chain(state)
+            .chain(
+                self.bytes
+                    .iter()
+                    .map(|(k, b)| (k.as_str(), Input::Bytes(b))),
+            )
+            .collect()
+    }
+
+    /// The build-in frame that looks like `frame`: the last one once all is at rest, else the
+    /// first of a run of equal states.
+    pub(crate) fn key(&self, frame: usize) -> usize {
+        let (states, last) = (&self.states, self.frames - 1);
+        if states.is_empty() {
+            return frame;
+        }
+        if states[frame] == states[last] {
+            return last;
+        }
+        let mut key = frame;
+        while key > 0 && states[key - 1] == states[frame] {
+            key -= 1;
+        }
+        key
+    }
+}
+
+/// What every card of a deck is made from.
+pub(crate) struct Maker<'a> {
+    deck: &'a Deck,
+    options: &'a Options,
+    assets: Assets,
+    logo: Option<Vec<u8>>,
+    scenes: Vec<Scene>,
+    theme: String,
+}
+
+impl<'a> Maker<'a> {
+    pub(crate) fn new(loaded: &'a Loaded, options: &'a Options) -> Result<Self> {
+        let deck = &loaded.deck;
+        let logo = deck
+            .logo
+            .as_ref()
+            .map(|path| {
+                std::fs::read(path)
+                    .with_context(|| format!("logo {}: missing image", path.display()))
+            })
+            .transpose()?;
+        Ok(Self {
+            deck,
+            options,
+            assets: Assets::new(&loaded.base, deck),
+            logo,
+            scenes: script::read(&loaded.source)?,
+            theme: theme_json(deck),
+        })
+    }
+
+    /// Every scene of the film: every page at every key press. A slide that doesn't fit is an
+    /// error naming it (all of them).
+    pub(crate) fn cards(&mut self, engine: &Engine) -> Result<Vec<Card>> {
+        let (pages, overflows) = self.paged(engine)?;
+        if !overflows.is_empty() {
+            let lines: Vec<String> = overflows.iter().map(ToString::to_string).collect();
+            anyhow::bail!("{}", lines.join("\n"));
+        }
+        let mut cards = Vec::new();
+        for page in &pages {
+            for step in 0..=fragments(&page.slide) {
+                cards.push(self.card(page, step)?);
+            }
+        }
+        Ok(cards)
+    }
+
+    /// The pages of every slide, and the slides that don't fit: a tall one pages on after as
+    /// many blocks as fit, else after as many items or lines of its first block; a follow-on
+    /// page carries the heading.
+    pub(crate) fn paged(&mut self, engine: &Engine) -> Result<(Vec<Page>, Vec<Overflow>)> {
+        let (mut pages, mut overflows) = (Vec::new(), Vec::new());
+        for (index, slide) in self.deck.slides.iter().enumerate() {
+            let mut page = Page {
+                slide: slide.clone(),
+                index,
+                more: false,
+            };
+            loop {
+                let spill = self.spill(engine, &page)?;
+                if spill == 1 {
+                    break;
+                }
+                let split = if self.options.format == Format::Tall {
+                    self.split(engine, &page)?
+                } else {
+                    None
+                };
+                let Some((head, rest)) = split else {
+                    overflows.push(Overflow {
+                        slide: index,
+                        title: slide.title().unwrap_or_default(),
+                        pages: spill,
+                    });
+                    break;
+                };
+                pages.push(head);
+                page = rest;
+            }
+            pages.push(page);
+        }
+        Ok((pages, overflows))
+    }
+
+    /// Pages `page` takes fully built.
+    fn spill(&mut self, engine: &Engine, page: &Page) -> Result<usize> {
+        self.card(page, fragments(&page.slide))?.pages(engine)
+    }
+
+    /// `page` in two, the first part fitting; `None` when not even one item or line fits.
+    fn split(&mut self, engine: &Engine, page: &Page) -> Result<Option<(Page, Page)>> {
+        let blocks = &page.slide.blocks;
+        let with = |blocks: Vec<Block>, more: bool| Page {
+            slide: Slide {
+                blocks,
+                ..page.slide.clone()
+            },
+            more,
+            ..*page
+        };
+        let mut fit = 0;
+        while fit + 1 < blocks.len()
+            && self.spill(engine, &with(blocks[..=fit].to_vec(), page.more))? == 1
+        {
+            fit += 1;
+        }
+        if fit > 0 {
+            return Ok(Some((
+                with(blocks[..fit].to_vec(), page.more),
+                with(blocks[fit..].to_vec(), true),
+            )));
+        }
+        let Some(first) = blocks.first() else {
+            return Ok(None);
+        };
+        let mut parts = 0;
+        while let Some((head, _)) = cut(first, parts + 1) {
+            if self.spill(engine, &with(vec![head], page.more))? != 1 {
+                break;
+            }
+            parts += 1;
+        }
+        Ok(cut(first, parts).map(|(head, tail)| {
+            let rest = std::iter::once(tail).chain(blocks[1..].iter().cloned());
+            (with(vec![head], page.more), with(rest.collect(), true))
+        }))
+    }
+
+    /// Page `page` at key press `step`.
+    fn card(&mut self, page: &Page, step: usize) -> Result<Card> {
+        let (o, slide) = (self.options, &page.slide);
+        let scene = self.scenes.get(page.index).cloned().unwrap_or_default();
+        let preset = scene.preset.unwrap_or(o.preset);
+        let (mut card, mut bytes) = card_json(slide, page.index == 0, step, &mut self.assets, o)?;
+        if let Some(logo) = &self.logo {
+            bytes.push(("logo".into(), logo.clone()));
+        }
+        let (states, frames, ticks, hold) = if preset == Preset::Flip {
+            let frames = ((o.enter * f32::from(o.fps)).round() as usize).max(1);
+            (Vec::new(), frames, TICKS, o.hold_for(words(slide, step)))
+        } else {
+            let (states, frames, hold) = moving(&mut card, page, step, &scene, preset, o);
+            (states, frames, 1, hold)
+        };
+        let [top, right, bottom, left] = o.safe.insets();
+        let logical = |px: u32| (px as f32 / SCALE).round().to_string();
+        let motion = !states.is_empty();
+        let text = vec![
+            ("card", card.to_string()),
+            ("theme", self.theme.clone()),
+            ("title", self.deck.title.clone()),
+            ("index", page.index.to_string()),
+            ("total", self.deck.slides.len().to_string()),
+            ("step", step.to_string()),
+            ("frames", if motion { 1 } else { frames }.to_string()),
+            ("width", logical(o.width)),
+            ("height", logical(o.height())),
+            ("safe", format!("{top} {right} {bottom} {left}")),
+        ];
+        Ok(Card {
+            slide: page.index,
+            title: slide.title().unwrap_or_default(),
+            text,
+            bytes,
+            states,
+            frames,
+            ticks,
+            hold,
+        })
+    }
+}
+
+/// A motion card: its words numbered in `card`, the state of every build-in frame, how many
+/// there are and the seconds the scene stays, on whole frames.
+fn moving(
+    card: &mut Value,
+    page: &Page,
+    step: usize,
+    scene: &Scene,
+    preset: Preset,
+    o: &Options,
+) -> (Vec<String>, usize, f32) {
+    card["motion"] = true.into();
+    let mut cues = script::number(card, &scene.heading);
+    for cue in cues.iter_mut().filter(|c| page.more && c.block == 0) {
+        cue.step = usize::MAX; // a follow-on page's heading is already there
+    }
+    let marked = page.slide.heading.is_some()
+        && (o.format == Format::Tall || scene.heading.iter().any(|r| r.mark));
+    let timeline = Timeline::new(preset, scene.beat.unwrap_or(BEAT), step, cues, marked);
+    let fps = f64::from(o.fps);
+    let frames = timeline.entrances().mul_add(fps, -1e-6).ceil().max(0.0) as usize + 1;
+    let states = (0..frames)
+        .map(|k| timeline.state(k as f64 / fps))
+        .collect();
+    let wpm = scene.pace.unwrap_or_else(|| f64::from(o.pace));
+    let length = timeline
+        .length(step, wpm)
+        .max(o.hold.map_or(0.0, f64::from));
+    (states, frames, ((length * fps).round() / fps) as f32)
+}
+
+/// `block` cut after `n` of its items or lines, both parts non-empty.
+fn cut(block: &Block, n: usize) -> Option<(Block, Block)> {
+    let halves = |len: usize| (1..len).contains(&n);
+    match block {
+        Block::List(items) if halves(items.len()) => Some((
+            Block::List(items[..n].to_vec()),
+            Block::List(items[n..].to_vec()),
+        )),
+        Block::Paragraph(lines) if halves(lines.len()) => Some((
+            Block::Paragraph(lines[..n].to_vec()),
+            Block::Paragraph(lines[n..].to_vec()),
+        )),
+        Block::Quote(lines) if halves(lines.len()) => Some((
+            Block::Quote(lines[..n].to_vec()),
+            Block::Quote(lines[n..].to_vec()),
+        )),
+        _ => None,
+    }
+}
+
+/// The words that come in at `step` of `slide`: at step 0 the heading and everything shown at
+/// once, at step k the k-th `+` bullet; a lit diagram node brings none.
+pub(crate) fn words(slide: &Slide, step: usize) -> usize {
+    fn count(text: &str) -> usize {
+        text.split_whitespace().filter(|w| *w != "//").count()
+    }
+    fn spans(spans: &[Span]) -> usize {
+        count(&deckmark::deck::plain(spans))
+    }
+    let mut reveal = 0;
+    let mut total = if step == 0 {
+        slide.heading.as_deref().map_or(0, spans)
+    } else {
+        0
+    };
+    for block in &slide.blocks {
+        total += match block {
+            Block::List(items) => items
+                .iter()
+                .filter(|item| {
+                    if item.reveal {
+                        reveal += 1;
+                        reveal == step
+                    } else {
+                        step == 0
+                    }
+                })
+                .map(|item| spans(&item.spans))
+                .sum(),
+            _ if step != 0 => 0,
+            Block::Paragraph(lines) | Block::Quote(lines) => lines.iter().map(|l| spans(l)).sum(),
+            Block::Code { lines, .. } => lines.iter().map(|l| count(l)).sum(),
+            Block::Table { head, rows, .. } => head
+                .iter()
+                .chain(rows.iter().flatten())
+                .map(|c| count(c))
+                .sum(),
+            Block::SubHeading(text) | Block::Error(text) => count(text),
+            Block::Metrics(items) => items.iter().map(|m| count(&m.label) + 1).sum(),
+            Block::Picture(_) | Block::Diagram(_) => 0,
+        };
+    }
+    total
+}
+
+/// The slide as the JSON the layout reads, with pictures and diagrams drawn for `step` as bytes.
+fn card_json(
+    slide: &Slide,
+    first: bool,
+    step: usize,
+    assets: &mut Assets,
+    options: &Options,
+) -> Result<(Value, Media)> {
+    let mut blocks = Vec::new();
+    let mut media = Vec::new();
+    let mut base = 0usize;
+    // Diagrams are drawn about half a card high.
+    let px_height = (options.height() as f32 * 0.5).round() as u32;
+    for block in &slide.blocks {
+        let value = match block {
+            Block::Paragraph(lines) => json!({ "kind": "paragraph", "lines": lines }),
+            Block::List(items) => {
+                base += items.iter().filter(|i| i.reveal).count();
+                json!({ "kind": "list", "items": items })
+            },
+            Block::Code { lang, lines } => json!({ "kind": "code", "lang": lang, "lines": lines }),
+            Block::Table { head, rows, .. } => {
+                // without the typst feature a table is text; the film draws it as lines
+                let mut lines = vec![head.join("  ")];
+                lines.extend(rows.iter().map(|r| r.join("  ")));
+                json!({ "kind": "code", "lang": "", "lines": lines })
+            },
+            Block::Quote(lines) => json!({ "kind": "quote", "lines": lines }),
+            Block::SubHeading(text) => json!({ "kind": "subheading", "text": text }),
+            Block::Metrics(items) => json!({ "kind": "metrics", "items": items }),
+            Block::Picture(picture) => {
+                let key = format!("img{}", media.len());
+                let loaded = assets.picture(picture, Some(px_height))?;
+                media.push((key.clone(), loaded.bytes.as_ref().clone()));
+                json!({ "kind": "image", "key": key, "height": picture.height, "steps": 0 })
+            },
+            Block::Diagram(diagram) => {
+                let key = format!("img{}", media.len());
+                let steps = Assets::steps(diagram);
+                let lit = step.saturating_sub(base).min(steps);
+                base += steps;
+                let png = assets.diagram_png(diagram, lit, px_height)?;
+                media.push((key.clone(), png.as_ref().clone()));
+                json!({ "kind": "image", "key": key, "height": diagram.height, "steps": steps })
+            },
+            Block::Error(text) => json!({ "kind": "error", "text": text }),
+        };
+        blocks.push(value);
+    }
+    let card = json!({
+        "title": slide.heading,
+        "first": slide.is_title(first),
+        "blocks": blocks,
+    });
+    Ok((card, media))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+    use crate::{Config, Settings};
+
+    fn tall(source: &str) -> (Loaded, Options) {
+        let loaded = Config::default().parse(source, "test", Path::new("."));
+        let flags = Settings {
+            format: Some(Format::Tall),
+            width: Some(180),
+            fps: Some(10),
+            ..Settings::default()
+        };
+        let options = Options::resolve(flags, &loaded.source, &Config::default()).unwrap();
+        (loaded, options)
+    }
+
+    /// The rows where `a` and `b` differ.
+    fn rows(a: &Frame, b: &Frame) -> Vec<usize> {
+        let row = a.width as usize * 3;
+        (0..a.height as usize)
+            .filter(|y| a.rgb[y * row..(y + 1) * row] != b.rgb[y * row..(y + 1) * row])
+            .collect()
+    }
+
+    #[test]
+    fn a_moving_word_leaves_the_other_lines_where_they_are() {
+        let (loaded, options) = tall("# Heading\n\nalpha beta\ngamma delta\n");
+        let engine = deckmark::faces::engine(&[]).unwrap();
+        let mut maker = Maker::new(&loaded, &options).unwrap();
+        let (pages, _) = maker.paged(&engine).unwrap();
+        let mut card = maker.card(&pages[0], 0).unwrap();
+        let mut draw = |state: &str| {
+            card.states = vec![state.to_string()];
+            card.draw(&engine, 0).unwrap()
+        };
+        let rest = draw(r#"{"w":[]}"#);
+        let moved = draw(r#"{"w":[{"o":0.4,"x":0.2,"y":0.3,"s":1.2}]}"#);
+        let bodiless = draw(r#"{"w":[{},{"o":0},{"o":0},{"o":0},{"o":0}]}"#);
+        let body = rows(&rest, &bodiless);
+        let changed = rows(&rest, &moved);
+        assert!(!body.is_empty() && !changed.is_empty());
+        assert!(
+            changed.iter().all(|y| y < &body[0]),
+            "{changed:?} vs {body:?}"
+        );
+    }
+
+    #[test]
+    fn a_tall_slide_that_does_not_fit_pages_on_with_its_heading() {
+        let items = (1..=30).map(|i| format!("- point number {i}"));
+        let (loaded, options) = tall(&format!(
+            "# Many\n\n{}\n",
+            items.collect::<Vec<_>>().join("\n")
+        ));
+        let engine = deckmark::faces::engine(&[]).unwrap();
+        let (pages, overflows) = Maker::new(&loaded, &options)
+            .unwrap()
+            .paged(&engine)
+            .unwrap();
+        assert!(overflows.is_empty(), "{overflows:?}");
+        assert!(pages.len() > 1);
+        assert!(
+            pages
+                .iter()
+                .all(|p| p.slide.heading == loaded.deck.slides[0].heading)
+        );
+        assert_eq!(pages.iter().filter(|p| p.more).count(), pages.len() - 1);
+        let lines: Vec<String> = (1..=60).map(|i| format!("let x{i} = {i};")).collect();
+        let (loaded, options) = tall(&format!("# Code\n\n```rust\n{}\n```\n", lines.join("\n")));
+        let overflows = crate::check(&loaded, &options).unwrap();
+        assert_eq!(overflows.len(), 1, "nothing fits: still an overflow");
+    }
+}

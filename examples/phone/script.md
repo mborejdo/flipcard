@@ -1,15 +1,16 @@
 ---
 title: "Ship small"
 format: tall
-hold: 5
-enter: 1.2
 ---
 
-# Ship ==small==, ship often
+# Ship ==small==
 
 ---
 
-# One change at a time
+# One change
+
+:::{scene} slide
+:::
 
 - easy to review
 + easy to test
@@ -17,15 +18,43 @@ enter: 1.2
 
 ---
 
+# Small steps
+
+:::{scene} pop
+:::
+
+A short change // is a short read.
+
+---
+
 # What it buys
 
 :::{metrics}
-1 | change
-0 | big bangs
+3x | releases
+60 % | fewer rollbacks
 :::
 
 ---
 
+# Before you merge
+
+- tests pass
+- one idea
+- small diff
+- clear name
+- notes for review
+- a way back
+- docs updated
+- no new warnings
+- a second look
+- a quiet deploy
+- a calm team
+
+---
+
 # Start today
+
+:::{scene} fade
+:::
 
 **Pick the smallest step** and ship it.

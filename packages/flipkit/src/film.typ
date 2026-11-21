@@ -1,9 +1,9 @@
 // One card of the film: a slide at one instant of one build-in step, drawn in the deck's tokens.
-// Inputs (sys.inputs): card (JSON, see film/mod.rs), theme (JSON: colours and fonts), title (the
-// deck's), index/total, step/steps, frame/frames, width and height (logical pt; rendered at
-// 2 px/pt), safe (the insets the content stays inside, "top right bottom left" as fractions of
-// the card), logo (bytes, optional), img<N> (bytes, the pictures and diagrams of this card at this
-// step).
+// Inputs (sys.inputs): card (JSON, see card.rs; with "motion" its text is numbered words), theme
+// (JSON: colours and fonts), title (the deck's), index/total, step/steps, frame/frames, state
+// (motion: the words' looks, see motion.typ), width and height (logical pt; rendered at 2 px/pt),
+// safe (the insets the content stays inside, "top right bottom left" as fractions of the card),
+// logo (bytes, optional), img<N> (bytes, the pictures and diagrams of this card at this step).
 
 #let card = json(bytes(sys.inputs.card))
 #let theme = json(bytes(sys.inputs.theme))
@@ -16,9 +16,14 @@
 #let W = float(sys.inputs.at("width", default: "320"))
 #let H = float(sys.inputs.at("height", default: W * 9 / 16))
 #let tall = H > W
+#let moving = card.at("motion", default: false)
 #let s = W / (if W > H { 320 } else { 360 }) // every size below is set for a 320 pt wide card, 360 pt tall or square
 #let (safe-top, safe-right, safe-bottom, safe-left) = sys.inputs.at("safe", default: "0 0 0 0").split(" ").map(float)
 #let px = 1pt
+// a size for the card: `n` wide, on a tall card `t` or `n` in proportion to 26 pt text
+#let sz(n, t: auto) = (if not tall { n } else if t == auto { n * 26 / 8.4 } else { t }) * s * px
+// tall: lists and code stay left in the centred card
+#let left-tall(body) = if tall { align(left, body) } else { body }
 
 #let ground = rgb(theme.ground)
 #let ink = rgb(theme.ink)
@@ -58,14 +63,18 @@
   }
 }
 
-// ---- inline markup ----
-#let spans(xs) = xs.map(sp => {
+// ---- inline markup: spans, or numbered words when moving ----
+#let styled(sp) = {
   let body = if sp.code { raw(sp.text) } else { text(sp.text) }
   if sp.bold { body = strong(body) }
   if sp.italic { body = emph(body) }
-  if sp.underline { body = marked(body) }
   body
-}).join()
+}
+#let spans(xs, heading: false) = if moving {
+  xs.map(w => word(w, [#styled(w)#w.at("tail", default: "")], band: heading and w.mark, under: w.underline or (w.mark and not heading))).join([ ])
+} else {
+  xs.map(sp => if sp.underline { marked(styled(sp)) } else { styled(sp) }).join()
+}
 
 // the card's margins sit inside the safe area
 #set page(width: W * px, height: H * px, margin: (
@@ -74,14 +83,14 @@
   top: safe-top * H * px + 16 * s * px,
   bottom: safe-bottom * H * px + 26 * s * px,
 ), fill: ground)
-#set text(font: sans, size: 8.4 * s * px, fill: ink, hyphenate: false, number-type: "lining")
+#set text(font: sans, size: sz(8.4), fill: ink, hyphenate: false, number-type: "lining")
 #set par(leading: 0.55em, spacing: 0.8em, justify: false)
 #set smartquote(enabled: false)
 #show raw: set text(font: mono, size: 0.92em)
 #show raw.where(block: false): it => box(fill: surface, inset: (x: 0.3em, y: 0.1em), radius: 2 * s * px, it)
 
-#let small(body, fill: muted, size: 5.4) = text(font: mono, size: size * s * px, fill: fill, body)
-#let heading-text(body, size) = text(font: display, weight: "black", size: size * s * px, fill: accent, body)
+#let small(body, fill: muted, size: 5.4, t: auto) = text(font: mono, size: sz(size, t: t), fill: fill, body)
+#let heading-text(body, size) = text(font: display, weight: "black", size: sz(size, t: 40), fill: accent, body)
 
 // ---- how many elements build in during this step, so they can be staggered ----
 #let fresh = {
@@ -101,7 +110,7 @@
 
 // ---- the blocks ----
 #let marker(level, number) = if number != none { small(str(number) + ".", fill: accent, size: 7) } else {
-  box(baseline: -0.2em, circle(radius: (1.7 - 0.35 * calc.min(level, 2)) * s * px, fill: if level == 0 { accent } else { muted }))
+  box(baseline: -0.2em, circle(radius: sz(1.7 - 0.35 * calc.min(level, 2)), fill: if level == 0 { accent } else { muted }))
 }
 
 #let body-blocks = {
@@ -112,34 +121,43 @@
       at-step(0, slot, fresh, par(b.lines.map(spans).join(linebreak())))
       if step == 0 { slot += 1 }
     } else if b.kind == "subheading" {
-      at-step(0, slot, fresh, block(above: 1.1em, below: 0.5em, text(font: display, weight: "bold", size: 9.5 * s * px, fill: accent, b.text)))
+      at-step(0, slot, fresh, block(above: 1.1em, below: 0.5em, text(font: display, weight: "bold", size: sz(9.5), fill: accent, if moving { spans(b.text) } else { b.text })))
       if step == 0 { slot += 1 }
     } else if b.kind == "quote" {
       at-step(0, slot, fresh, block(inset: (left: 0.7em, y: 0.2em), stroke: (left: 1.6 * s * px + accent), text(fill: muted, style: "italic", b.lines.map(spans).join(linebreak()))))
       if step == 0 { slot += 1 }
     } else if b.kind == "list" {
-      block(width: 100%, {
+      left-tall(block(width: 100%, {
         set par(spacing: 0.45em)
         for it in b.items {
-          let line = box(inset: (left: it.level * 1.2em), [#marker(it.level, it.number) #h(0.5em) #spans(it.spans)])
+          let dot = marker(it.level, it.number)
+          let dot = if moving and it.spans.len() > 0 { word(it.spans.first(), dot) } else { dot }
+          let line = box(inset: (left: it.level * 1.2em), [#dot #h(0.5em) #spans(it.spans)])
           let k = if it.reveal { rc += 1; rc } else { 0 }
           at-step(k, slot, fresh, line)
           if k == step { slot += 1 }
           parbreak()
         }
-      })
+      }))
     } else if b.kind == "code" {
-      at-step(0, slot, fresh, block(width: 100%, fill: surface, inset: 0.7em, radius: 3 * s * px, raw(b.lines.join("\n"), block: true, lang: if b.lang == "" { none } else { b.lang })))
+      at-step(0, slot, fresh, left-tall(block(width: 100%, fill: surface, inset: 0.7em, radius: 3 * s * px, raw(b.lines.join("\n"), block: true, lang: if b.lang == "" { none } else { b.lang }))))
       if step == 0 { slot += 1 }
     } else if b.kind == "metrics" {
       block(above: 1em, below: 1.1em, grid(
-        columns: b.items.map(it => auto),
-        column-gutter: 10 * s * px,
+        // tall: one metric per row, the numbers are big
+        ..if tall { (columns: (auto,), row-gutter: sz(10)) } else { (columns: b.items.map(it => auto)) },
+        column-gutter: sz(10),
         ..b.items.enumerate().map(((i, m)) => block(inset: (left: 0.5em, y: 0.1em), stroke: (left: (1.6 * s * px + accent)), {
           set par(leading: 0.7em)
-          text(font: display, weight: "bold", size: 17 * s * px, fill: ink, counted(m.value))
+          if moving {
+            let v = m.value
+            let counted = motion.at("n", default: ()).at(v.count, default: v.text)
+            text(font: display, weight: "bold", size: sz(17, t: 64), fill: ink, number-width: "tabular", word(v, counted, final: v.text))
+          } else {
+            text(font: display, weight: "bold", size: sz(17, t: 64), fill: ink, counted(m.value))
+          }
           linebreak()
-          at-step(0, slot + i, fresh, small(m.label))
+          at-step(0, slot + i, fresh, small(if moving { spans(m.label) } else { m.label }, t: 18))
         })),
       ))
       if step == 0 { slot += b.items.len() }
@@ -164,7 +182,23 @@
   }
   words
 }
-#let heading-block = if card.title == none { none } else if card.first {
+// moving: a marker behind the `==` words, or on a tall card a bar under the whole heading, drawn
+// from the left once the words have landed
+#let heading-block = if card.title == none { none } else if moving {
+  let body = heading-text(spans(card.title, heading: true), if card.first { 19 } else { 13 })
+  block(width: 100%, below: 7 * s * px, {
+    set par(leading: 0.42em)
+    body
+    if tall and not card.title.any(w => w.mark) and card.title.len() > 0 {
+      let draw = motion.at("w", default: ()).at(card.title.first().id, default: (:)).at("draw", default: 1)
+      layout(size => {
+        let w = measure(body, width: size.width).width
+        v(4 * s * px)
+        box(width: w, align(left, line(length: w * draw, stroke: 3 * s * px + accent)))
+      })
+    }
+  })
+} else if card.first {
   let n = title-words.len()
   block(width: 100%, {
     set par(leading: 0.42em)
@@ -186,7 +220,7 @@
   place(top + left, dy: -8 * s * px, image(sys.inputs.logo, height: 12 * s * px))
 }
 #if card.first or tall {
-  align(horizon, {
+  align(if tall { center + horizon } else { horizon }, {
     heading-block
     v(6 * s * px)
     body-blocks
@@ -200,6 +234,6 @@
 #place(bottom + left, dy: 14 * s * px, grid(
   columns: (1fr, auto),
   align: (left + horizon, right + horizon),
-  small(deck-title),
-  text(font: mono, weight: "bold", size: 5.4 * s * px, fill: accent, str(index + 1) + " / " + str(total)),
+  small(deck-title, t: 12),
+  text(font: mono, weight: "bold", size: sz(5.4, t: 12), fill: accent, str(index + 1) + " / " + str(total)),
 ))

@@ -28,7 +28,9 @@ pub struct Settings {
     pub fps: Option<u16>,
     /// Width in pixels, even (640).
     pub width: Option<u32>,
-    /// Seconds every card stays (7).
+    /// How the words come in: flip, rise, slide, fade, pop or still (flip; rise for tall).
+    pub preset: Option<crate::Preset>,
+    /// Seconds every scene stays at least (7 for flip).
     pub hold: Option<f32>,
     /// Seconds of build-in (1.6).
     pub enter: Option<f32>,
@@ -55,6 +57,7 @@ impl Settings {
         Self {
             format: self.format.or(under.format),
             safe: self.safe.or(under.safe),
+            preset: self.preset.or(under.preset),
             fps: self.fps.or(under.fps),
             width: self.width.or(under.width),
             hold: self.hold.or(under.hold),
@@ -68,7 +71,7 @@ impl Settings {
         }
     }
 
-    /// Read the film keys of a deck's frontmatter (`format`, `safe`, `fps`, `width`, `hold`,
+    /// Read the film keys of a deck's frontmatter (`format`, `safe`, `preset`, `fps`, `width`, `hold`,
     /// `enter`, `fade`, `transition`, `pace`, `colours`, `gif-width`, `gif-fps`); a value that is
     /// not a number, or not one of the key's names, is an error naming the key.
     pub fn from_frontmatter(get: impl Fn(&str) -> Option<String>) -> Result<Self> {
@@ -92,6 +95,7 @@ impl Settings {
         Ok(Self {
             format: named("format", get("format"))?,
             safe: named("safe", get("safe"))?,
+            preset: named("preset", get("preset"))?,
             fps: number("fps", get("fps"))?,
             width: number("width", get("width"))?,
             hold: number("hold", get("hold"))?,
@@ -246,6 +250,7 @@ impl fmt::Display for Config {
         let film: Vec<String> = [
             ("format", f.format.map(|v| format!("{v:?}").to_lowercase())),
             ("safe", f.safe.map(|v| format!("{v:?}").to_lowercase())),
+            ("preset", f.preset.map(|v| v.name().to_string())),
             ("fps", f.fps.map(|v| v.to_string())),
             ("width", f.width.map(|v| v.to_string())),
             ("hold", f.hold.map(|v| v.to_string())),
