@@ -45,6 +45,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
   `Rendered::poster`, `strip_scheme`, filmstrip's `docx` and `pdf` features (docx-rs, zip,
   lopdf, typst-pdf). flipcard writes GIF and MP4; other tools embed them. Frontmatter `links:`
   is no longer shown anywhere.
+- API nothing used: `filmstrip::sequence`, `Scene`, `Timing::ticks` (`shots` takes ticks per
+  scene), `gif::encode`, `video::encode` (the `Writer`s do it), `Frame::solid`;
+  `flipkit::Config::read`, `config::FILE`, `Rendered::options`, the `Deck`, `Look` and
+  `filmstrip` re-exports.
 
 The wide example's GIF, MP4 and cards are the same bytes as before.
 

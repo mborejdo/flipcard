@@ -15,35 +15,6 @@ use crate::Frame;
 /// frame plus 1x1 transparent "keep" frames that only carry time.
 const MAX_DELAY_CS: u32 = 100;
 
-/// Encode `frames` at `fps`. The palette (`colours` entries, 2 to 255) is learned from
-/// `keyframes`, the stills a viewer looks at longest (empty: from every frame); blends map onto it.
-///
-/// # Examples
-///
-/// ```
-/// use filmstrip::Frame;
-///
-/// let a = Frame::solid(4, 4, [0, 0, 0]);
-/// let b = Frame::solid(4, 4, [255, 255, 255]);
-/// let gif = filmstrip::gif::encode(&[a.clone(), a.clone(), b.clone()], &[a, b], 10, 8).expect("gif");
-/// assert!(gif.starts_with(b"GIF89a"));
-/// ```
-pub fn encode(frames: &[Frame], keyframes: &[Frame], fps: u16, colours: usize) -> Result<Vec<u8>> {
-    let Some(first) = frames.first() else {
-        bail!("no frames");
-    };
-    let stills = if keyframes.is_empty() {
-        frames
-    } else {
-        keyframes
-    };
-    let mut writer = Writer::new(first.width, first.height, stills, fps, colours)?;
-    for f in frames {
-        writer.push(f, 1)?;
-    }
-    writer.finish()
-}
-
 /// A GIF written frame by frame. Frames are written late: identical neighbours fold into the
 /// delay of the frame on screen, and every frame after the first is a delta against the previous.
 pub struct Writer {
@@ -248,7 +219,18 @@ impl Writer {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::Context;
+
     use super::*;
+
+    fn encode(frames: &[Frame], stills: &[Frame], fps: u16, colours: usize) -> Result<Vec<u8>> {
+        let first = frames.first().context("no frames")?;
+        let mut writer = Writer::new(first.width, first.height, stills, fps, colours)?;
+        for f in frames {
+            writer.push(f, 1)?;
+        }
+        writer.finish()
+    }
 
     /// (left, top, width, height, delay in cs) of every frame in the file.
     fn frames_of(bytes: &[u8]) -> Vec<(u16, u16, u16, u16, u16)> {
@@ -292,8 +274,8 @@ mod tests {
 
     #[test]
     fn empty_input_and_zero_fps_are_errors() {
-        assert!(encode(&[], &[], 10, 4).is_err());
-        let a = Frame::solid(2, 2, [0; 3]);
-        assert!(encode(&[a], &[], 0, 4).is_err());
+        let a = [Frame::solid(2, 2, [0; 3])];
+        assert!(Writer::new(2, 2, &a, 10, 4).unwrap().finish().is_err());
+        assert!(Writer::new(2, 2, &a, 0, 4).is_err());
     }
 }

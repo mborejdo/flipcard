@@ -32,28 +32,6 @@ fn level(w: usize, h: usize, fps: u16) -> u8 {
         .map_or(52, |&(idc, ..)| idc)
 }
 
-/// Encode `frames` at `fps` into MP4 bytes. Width and height must be even.
-///
-/// # Examples
-///
-/// ```
-/// use filmstrip::Frame;
-///
-/// let frames = vec![Frame::solid(32, 18, [0; 3]), Frame::solid(32, 18, [255; 3])];
-/// let mp4 = filmstrip::video::encode(&frames, 10).expect("mp4");
-/// assert_eq!(&mp4[4..8], b"ftyp");
-/// ```
-pub fn encode(frames: &[Frame], fps: u16) -> Result<Vec<u8>> {
-    let Some(first) = frames.first() else {
-        bail!("no frames");
-    };
-    let mut writer = Writer::new(first.width, first.height, fps)?;
-    for f in frames {
-        writer.push(f, 1)?;
-    }
-    writer.finish()
-}
-
 /// An MP4 written frame by frame: each frame goes through the encoder at once, each picture
 /// into the container as soon as the next one starts.
 pub struct Writer {
@@ -282,6 +260,15 @@ fn nals(stream: &[u8]) -> Vec<&[u8]> {
 mod tests {
     use super::*;
 
+    fn encode(frames: &[Frame], fps: u16) -> Result<Vec<u8>> {
+        let first = frames.first().context("no frames")?;
+        let mut writer = Writer::new(first.width, first.height, fps)?;
+        for f in frames {
+            writer.push(f, 1)?;
+        }
+        writer.finish()
+    }
+
     #[test]
     fn every_frame_becomes_a_sample_and_the_first_is_a_keyframe() {
         let frames: Vec<Frame> = (0..5)
@@ -301,7 +288,7 @@ mod tests {
 
     #[test]
     fn odd_sizes_and_empty_input_are_errors() {
-        assert!(encode(&[], 10).is_err());
+        assert!(Writer::new(32, 18, 10).unwrap().finish().is_err());
         assert!(encode(&[Frame::solid(31, 18, [0; 3])], 10).is_err());
     }
 

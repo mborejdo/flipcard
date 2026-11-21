@@ -2,7 +2,7 @@
 //! Rust, nothing started.
 //!
 //! [`shots`] plans the frames of a film from scenes: every scene's build-in frames, a hold on its
-//! last frame, a [`Transition`] into the next scene. [`sequence`] draws that plan.
+//! last frame, a [`Transition`] into the next scene.
 
 // Pixel and timing math: frames are a few hundred pixels wide and a film a few hundred frames
 // long, far inside every range.
@@ -33,8 +33,8 @@ pub struct Frame {
 
 impl Frame {
     /// A frame of one colour.
-    #[must_use]
-    pub fn solid(width: u32, height: u32, rgb: [u8; 3]) -> Self {
+    #[cfg(test)]
+    fn solid(width: u32, height: u32, rgb: [u8; 3]) -> Self {
         Self {
             width,
             height,
@@ -46,12 +46,6 @@ impl Frame {
     #[must_use]
     pub const fn is_consistent(&self) -> bool {
         self.rgb.len() == (self.width * self.height * 3) as usize
-    }
-
-    /// Whether this frame has the size of `first` and a buffer to match: what every encoder asks
-    /// of the frames after the first.
-    const fn matches(&self, first: &Self) -> bool {
-        self.width == first.width && self.height == first.height && self.is_consistent()
     }
 
     /// The frame as a PNG.
@@ -267,25 +261,12 @@ pub struct Timing {
     pub fade: f32,
     /// How one scene gives way to the next.
     pub transition: Transition,
-    /// Frames each build-in frame of a [`sequence`] stays (2 at 10 fps gives the stop-motion
-    /// look).
-    pub ticks: usize,
 }
 
 impl Timing {
     fn frames(self, seconds: f32) -> usize {
         (seconds * f32::from(self.fps)).round() as usize
     }
-}
-
-/// One scene of the film: its build-in frames in order (one frame for a still) and how long it
-/// stays.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Scene<'a> {
-    /// The build-in frames, the last one fully built.
-    pub frames: &'a [Frame],
-    /// Seconds the scene stays, build-in included.
-    pub hold: f32,
 }
 
 /// One frame of the film, by where it comes from.
@@ -342,119 +323,39 @@ pub fn shots(scenes: &[(usize, usize, f32)], timing: Timing) -> Result<Vec<Shot>
     Ok(out)
 }
 
-/// The frames of the whole film, as [`shots`] plans them.
-///
-/// # Examples
-///
-/// ```
-/// use filmstrip::{Frame, Scene, Timing, Transition};
-///
-/// let a = [Frame::solid(2, 2, [0, 0, 0])];
-/// let b = [Frame::solid(2, 2, [255, 255, 255])];
-/// let timing = Timing { fps: 10, fade: 0.0, transition: Transition::Fade, ticks: 1 };
-/// let scenes = [Scene { frames: &a, hold: 1.0 }, Scene { frames: &b, hold: 2.0 }];
-/// let frames = filmstrip::sequence(&scenes, timing).expect("frames");
-/// assert_eq!(frames.len(), 30);
-/// ```
-pub fn sequence(scenes: &[Scene<'_>], timing: Timing) -> Result<Vec<Frame>> {
-    let Some(first) = scenes.first().and_then(|s| s.frames.first()) else {
-        bail!("no scene frames");
-    };
-    if let Some(odd) = scenes
-        .iter()
-        .flat_map(|s| s.frames)
-        .find(|f| !f.matches(first))
-    {
-        bail!(
-            "scene frames differ in size: {}x{} and {}x{}",
-            first.width,
-            first.height,
-            odd.width,
-            odd.height
-        );
-    }
-    let plan: Vec<_> = scenes
-        .iter()
-        .map(|s| (s.frames.len(), timing.ticks, s.hold))
-        .collect();
-    let frame = |scene: usize, frame: usize| &scenes[scene].frames[frame];
-    Ok(shots(&plan, timing)?
-        .into_iter()
-        .map(|shot| match shot {
-            Shot::Card { scene, frame: f } => frame(scene, f).clone(),
-            Shot::Between { scene, t } => {
-                let last = scenes[scene].frames.len() - 1;
-                let next = (scene + 1) % scenes.len();
-                timing
-                    .transition
-                    .frame(frame(scene, last), frame(next, 0), t)
-            },
-        })
-        .collect())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn a_build_in_then_a_hold_then_a_fade() {
-        let a = Frame::solid(2, 1, [0, 0, 0]);
-        let b = Frame::solid(2, 1, [100, 100, 100]);
-        let c = Frame::solid(2, 1, [200, 200, 200]);
         let timing = Timing {
             fps: 10,
             fade: 0.2,
             transition: Transition::Fade,
-            ticks: 2,
         };
-        let one = [a.clone(), b.clone()];
-        let two = [c.clone()];
-        let scenes = [
-            Scene {
-                frames: &one,
-                hold: 1.0,
-            },
-            Scene {
-                frames: &two,
-                hold: 1.5,
-            },
-        ];
-        let frames = sequence(&scenes, timing).unwrap();
-        // scene 1: a a (build-in, 2 ticks), b x 8 (hold 10 - 2), 2 blends; scene 2: c x 15, 2 blends
-        assert_eq!(frames.len(), 2 + 8 + 2 + 15 + 2);
-        assert_eq!(frames[0], a);
-        assert_eq!(frames[2], b);
-        assert_eq!(frames[9], b);
-        assert!(frames[10].rgb[0] > 100 && frames[10].rgb[0] < 200);
-        assert_eq!(frames[12], c);
-        assert_eq!(frames[26], c);
-        assert!(frames[28].rgb[0] < 200);
+        let shots = shots(&[(2, 2, 1.0), (1, 2, 1.5)], timing).unwrap();
+        // scene 1: frame 0 for 2 ticks, frame 1 for 8 (hold 10 - 2), 2 blends; scene 2: 15, 2 blends
+        assert_eq!(shots.len(), 2 + 8 + 2 + 15 + 2);
+        let card = |scene, frame| Shot::Card { scene, frame };
+        assert_eq!(
+            (shots[0], shots[2], shots[9]),
+            (card(0, 0), card(0, 1), card(0, 1))
+        );
+        assert!(matches!(shots[10], Shot::Between { scene: 0, t } if t > 0.0 && t < 0.5));
+        assert_eq!((shots[12], shots[26]), (card(1, 0), card(1, 0)));
+        assert!(matches!(shots[28], Shot::Between { scene: 1, .. }));
     }
 
     #[test]
-    fn frames_of_different_sizes_are_refused() {
-        let a = Frame::solid(2, 1, [0; 3]);
-        let b = Frame::solid(1, 1, [0; 3]);
+    fn no_scenes_and_a_scene_without_frames_are_refused() {
         let timing = Timing {
             fps: 10,
             fade: 0.0,
             transition: Transition::Fade,
-            ticks: 1,
         };
-        let (a, b) = ([a], [b]);
-        let scenes = [
-            Scene {
-                frames: &a,
-                hold: 1.0,
-            },
-            Scene {
-                frames: &b,
-                hold: 1.0,
-            },
-        ];
-        assert!(sequence(&scenes, timing).is_err());
-        assert!(sequence(&[], timing).is_err());
+        assert!(shots(&[], timing).is_err());
+        assert!(shots(&[(1, 1, 1.0), (0, 1, 1.0)], timing).is_err());
     }
 
     #[test]
@@ -477,23 +378,17 @@ mod tests {
                 },
             }
         }
-        let scene = [black];
-        let scenes = [Scene {
-            frames: &scene,
-            hold: 0.5,
-        }];
         let cut = Timing {
             fps: 10,
             fade: 1.0,
             transition: Transition::Cut,
-            ticks: 1,
         };
-        assert_eq!(sequence(&scenes, cut).unwrap().len(), 5);
+        assert_eq!(shots(&[(1, 1, 0.5)], cut).unwrap().len(), 5);
         let wipe = Timing {
             transition: Transition::Wipe,
             ..cut
         };
-        assert_eq!(sequence(&scenes, wipe).unwrap().len(), 15);
+        assert_eq!(shots(&[(1, 1, 0.5)], wipe).unwrap().len(), 15);
     }
 
     #[test]

@@ -11,8 +11,16 @@ use typstkit::{Engine, Input, Main};
 
 use crate::motion::{Preset, Timeline};
 use crate::script::{self, Scene};
-use crate::{CARD, Format, Frame, Options, Overflow, SCALE, TICKS, theme_json};
+use crate::{Format, Frame, Options, Overflow};
 
+/// The card layout, `word()` first.
+const CARD: &str = concat!(include_str!("typ/motion.typ"), include_str!("film.typ"));
+/// Pixels per logical point: the card is drawn at twice its size for crisp text.
+const SCALE: f32 = 2.0;
+/// Seconds a flip scene stays unless `hold` says otherwise.
+const HOLD: f32 = 7.0;
+/// Frames each flip build-in frame stays: 2 at 10 fps is the stop-motion look.
+const TICKS: usize = 2;
 /// Seconds of a beat, unless a scene says otherwise.
 const BEAT: f64 = 0.4;
 
@@ -137,7 +145,7 @@ impl<'a> Maker<'a> {
             assets: Assets::new(&loaded.base, deck),
             logo,
             scenes: script::read(&loaded.source)?,
-            theme: theme_json(deck),
+            theme: theme(deck),
         })
     }
 
@@ -255,7 +263,11 @@ impl<'a> Maker<'a> {
         }
         let (states, frames, ticks, hold) = if preset == Preset::Flip {
             let frames = ((o.enter * f32::from(o.fps)).round() as usize).max(1);
-            (Vec::new(), frames, TICKS, o.hold_for(words(slide, step)))
+            // the hold, or longer when reading the words at `pace` takes more
+            let hold = o.hold.unwrap_or(HOLD);
+            let read = words(slide, step) as f32 * 60.0 / o.pace;
+            let hold = if o.pace > 0.0 { hold.max(read) } else { hold };
+            (Vec::new(), frames, TICKS, hold)
         } else {
             let (states, frames, hold) = moving(&mut card, page, step, &scene, preset, o);
             (states, frames, 1, hold)
@@ -447,6 +459,22 @@ fn card_json(
         "blocks": blocks,
     });
     Ok((card, media))
+}
+
+/// The deck's colours and font families as the JSON the layout reads.
+fn theme(deck: &Deck) -> String {
+    let pal = deck.palette();
+    let mut map = serde_json::Map::new();
+    for (name, colour) in pal.named() {
+        map.insert(name.to_string(), Value::String(colour.to_string()));
+    }
+    map.insert("sans".into(), Value::String(deck.tokens.fonts.sans.clone()));
+    map.insert("mono".into(), Value::String(deck.tokens.fonts.mono.clone()));
+    map.insert(
+        "display".into(),
+        Value::String(deck.tokens.fonts.display.clone()),
+    );
+    Value::Object(map).to_string()
 }
 
 #[cfg(test)]

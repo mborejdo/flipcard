@@ -75,7 +75,6 @@ pub(crate) struct Cli {
 
 /// The flags of a render.
 #[derive(clap::Args)]
-#[allow(clippy::struct_excessive_bools, reason = "independent output switches")]
 pub(crate) struct FilmArgs {
     /// The deck, e.g. talk/slides.md.
     pub(crate) file: Option<PathBuf>,

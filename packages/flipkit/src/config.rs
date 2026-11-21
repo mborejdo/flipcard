@@ -13,7 +13,7 @@ use deckmark::deck::{self, Deck, Loaded};
 use serde::Deserialize;
 
 /// The file name looked up in the deck's folder and every folder above it.
-pub const FILE: &str = "flipcard.toml";
+const FILE: &str = "flipcard.toml";
 
 /// The `[film]` table, the frontmatter's film keys or the flags: every key optional, a key left
 /// out falls through to the next level.
@@ -155,8 +155,8 @@ struct Raw {
 }
 
 impl Config {
-    /// Load the closest `flipcard.toml` from `deck_dir` up to the filesystem root; the defaults
-    /// when there is none.
+    /// Load the closest `flipcard.toml` from `deck_dir` up to the filesystem root, its paths
+    /// relative to its folder; the defaults when there is none.
     ///
     /// # Examples
     ///
@@ -176,13 +176,8 @@ impl Config {
         else {
             return Ok(Self::default());
         };
-        Self::read(&file)
-    }
-
-    /// Read one config file; paths in it are relative to its folder.
-    pub fn read(file: &Path) -> Result<Self> {
         let text =
-            std::fs::read_to_string(file).with_context(|| format!("read {}", file.display()))?;
+            std::fs::read_to_string(&file).with_context(|| format!("read {}", file.display()))?;
         let raw: Raw =
             toml::from_str(&text).with_context(|| format!("parse {}", file.display()))?;
         let dir = file.parent().unwrap_or_else(|| Path::new("."));
@@ -193,7 +188,7 @@ impl Config {
                 logo: raw.logo.map(|l| dir.join(l)),
             },
             film: raw.film,
-            file: Some(file.to_path_buf()),
+            file: Some(file),
         })
     }
 

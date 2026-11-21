@@ -39,7 +39,7 @@ pub(crate) struct Timeline {
     mark: Option<u32>,
     marked: bool,
     /// The half-beat the last entrance ends.
-    pub end: u32,
+    end: u32,
 }
 
 impl Timeline {

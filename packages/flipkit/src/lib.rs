@@ -8,7 +8,7 @@
 //! in Rust and drawn by Typst without reflow.
 //!
 //! The deck is the presiterm dialect, read by [`deckmark`]. This file is the spine: [`Options`],
-//! [`render`] and the containers; [`config`] reads `flipcard.toml`, [`format`](mod@format) the
+//! [`render`] and the encoders; [`config`] reads `flipcard.toml`, [`format`](mod@format) the
 //! canvas; `card` makes the scenes, `script` reads `:::{scene}` and numbers the words, `motion`
 //! times them. The card layout is `typ/motion.typ` and `film.typ`, both embedded.
 
@@ -35,26 +35,17 @@ use std::thread::{Scope, ScopedJoinHandle};
 use anyhow::{Context, Result, bail};
 use filmstrip::Shot;
 use rayon::prelude::*;
-use serde_json::Value;
 use typstkit::Engine;
 
 use crate::card::Maker;
 
-pub use config::{Config, Look, Settings};
-pub use deckmark::deck::{Deck, Loaded};
+pub use config::{Config, Settings};
+pub use deckmark;
+pub use deckmark::deck::Loaded;
 pub use filmstrip::{Frame, Transition};
 pub use format::{Format, Safe};
 pub use motion::Preset;
-pub use {deckmark, filmstrip};
 
-/// The card layout, `word()` first.
-const CARD: &str = concat!(include_str!("typ/motion.typ"), include_str!("film.typ"));
-/// Pixels per logical point: the card is drawn at twice its size for crisp text.
-const SCALE: f32 = 2.0;
-/// Seconds a flip scene stays unless `hold` says otherwise.
-const HOLD: f32 = 7.0;
-/// Frames each flip build-in frame stays: 2 at 10 fps is the stop-motion look.
-const TICKS: usize = 2;
 /// Distinct frames drawn side by side before they go to the encoders.
 const CHUNK: usize = 32;
 /// Most Typst engines drawing at once.
@@ -148,16 +139,6 @@ impl Options {
         let (w, h) = self.format.aspect();
         (self.width * h + w) / (2 * w) * 2
     }
-
-    /// Seconds a scene with `words` words stays: `hold`, or longer when reading them at `pace`
-    /// takes more.
-    fn hold_for(&self, words: usize) -> f32 {
-        let hold = self.hold.unwrap_or(HOLD);
-        if self.pace <= 0.0 {
-            return hold;
-        }
-        hold.max(words as f32 * 60.0 / self.pace)
-    }
 }
 
 /// Which films [`render`] encodes while the frames stream by.
@@ -184,8 +165,6 @@ pub struct Rendered {
     pub gif: Option<Vec<u8>>,
     /// The MP4, if asked for.
     pub mp4: Option<Vec<u8>>,
-    /// The options it was rendered with.
-    pub options: Options,
 }
 
 impl Rendered {
@@ -254,7 +233,6 @@ pub fn render(loaded: &Loaded, options: &Options, outputs: Outputs) -> Result<Re
         fps: options.fps,
         fade: options.fade,
         transition: options.transition,
-        ticks: TICKS,
     };
     let plan: Vec<_> = cards.iter().map(|c| (c.frames, c.ticks, c.hold)).collect();
     let shots: Vec<Shot> = filmstrip::shots(&plan, timing)?
@@ -298,7 +276,6 @@ pub fn render(loaded: &Loaded, options: &Options, outputs: Outputs) -> Result<Re
         frames: shots.len(),
         gif,
         mp4,
-        options: options.clone(),
     })
 }
 
@@ -500,21 +477,6 @@ pub fn check(loaded: &Loaded, options: &Options) -> Result<Vec<Overflow>> {
     Ok(Maker::new(loaded, options)?.paged(&engine)?.1)
 }
 
-pub(crate) fn theme_json(deck: &Deck) -> String {
-    let pal = deck.palette();
-    let mut map = serde_json::Map::new();
-    for (name, colour) in pal.named() {
-        map.insert(name.to_string(), Value::String(colour.to_string()));
-    }
-    map.insert("sans".into(), Value::String(deck.tokens.fonts.sans.clone()));
-    map.insert("mono".into(), Value::String(deck.tokens.fonts.mono.clone()));
-    map.insert(
-        "display".into(),
-        Value::String(deck.tokens.fonts.display.clone()),
-    );
-    Value::Object(map).to_string()
-}
-
 /// Where the film's files go: `<out or the deck's folder>/<deck stem>.<ext>`.
 #[must_use]
 pub fn output_path(deck_file: &Path, out: Option<&Path>, ext: &str) -> std::path::PathBuf {
@@ -535,6 +497,7 @@ mod tests {
     use std::path::Path;
 
     use deckmark::deck;
+    use serde_json::Value;
 
     use super::*;
 
