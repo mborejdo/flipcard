@@ -32,8 +32,9 @@ A short change // is a **short** read.
 :::{scene} rise
 :::
 
-One ==idea==, one __name__,
-no ~~big bang~~.
+One ==idea==.
+One __name__.
+No ~~big bang~~.
 
 ---
 
