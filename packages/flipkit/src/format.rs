@@ -192,7 +192,12 @@ mod tests {
             (tall.width, tall.fps, tall.safe),
             (Some(1080), Some(30), Some(Safe::Phone))
         );
-        assert_eq!(Format::Square.defaults().safe, None);
+        let square = Format::Square.defaults();
+        assert_eq!(
+            (square.safe, square.preset),
+            (None, Some(crate::Preset::Rise))
+        );
+        assert!(Format::Square.phone() && !Format::Wide.phone());
         assert_eq!(Format::Wide.defaults(), Settings::default());
     }
 }

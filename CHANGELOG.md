@@ -4,6 +4,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## Unreleased
 
+### Fixed
+- Square films take the phone look: big centred words, page-on, words that rise.
+- A run of bold words that pulses at once keeps its spaces.
+
 ### Changed
 
 - `flipcard lint` tags each line with its level, `slide 3 (Title): error: the card overflows
