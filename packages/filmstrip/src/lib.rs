@@ -1,6 +1,8 @@
 //! Frames in, films out: RGB frames become an animated GIF ([`gif`]) or an MP4 ([`video`]). Pure
 //! Rust, nothing started.
 //!
+//! [`pad`] puts a tall frame on a square canvas over a blurred copy of itself.
+//!
 //! [`shots`] plans the frames of a film from scenes: every scene's build-in frames, a hold on its
 //! last frame, a [`Transition`] into the next scene.
 
@@ -15,6 +17,7 @@
 
 #[cfg(feature = "gif")]
 pub mod gif;
+pub mod pad;
 #[cfg(feature = "mp4")]
 pub mod video;
 

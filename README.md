@@ -24,6 +24,7 @@ flipcard talk/slides.md --gif --mp4              # both
 flipcard talk/slides.md --out dist --cards dist/cards
 flipcard talk/slides.md --format tall --mp4      # 1080x1920 at 30 fps, for a phone
 flipcard talk/slides.md --format tall --preset slide
+flipcard talk/slides.md --format tall --pad square --mp4   # 1080x1080, the tall film as a panel
 flipcard lint talk/slides.md                     # does every card fit
 flipcard config talk/slides.md                   # which flipcard.toml applies
 ```
@@ -50,8 +51,8 @@ accent = "#2b2459"
 display = "Inter"         # headings, in the heaviest weight the family has
 
 [film]
-hold = 5                  # also format, safe, preset, fps, width, enter, fade, transition,
-                          # pace, colours, gif-width, gif-fps
+hold = 5                  # also format, safe, pad, preset, fps, width, enter, fade,
+                          # transition, pace, colours, gif-width, gif-fps
 ```
 
 ## How it works

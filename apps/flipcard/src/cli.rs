@@ -21,6 +21,8 @@ Examples:
   flipcard talk/slides.md --transition wipe     or push, pixelize, circle, split, cut
   flipcard talk/slides.md --format tall --mp4   a 9:16 film for phones, 1080x1920 at 30 fps
   flipcard talk/slides.md --format tall --safe none --gif-width 270 --gif-fps 10
+  flipcard talk/slides.md --format tall --pad square --mp4
+                                                a 1080x1080 film: the tall card as a panel on a blurred copy
   flipcard talk/slides.md --format tall --preset slide
                                                 words in from the left: rise, slide, fade, pop, still, type, karaoke, move, stack, flip
   flipcard lint talk/slides.md                  does every card fit
@@ -28,9 +30,9 @@ Examples:
 
 A flip build-in is `enter` seconds of animation, then `hold` seconds of rest; the other presets
 bring the words in on a beat and hold them for their reading time. Frontmatter (format, safe,
-preset, fps, width, hold, enter, fade, transition, pace, colours, gif-width, gif-fps) and `[film]`
-in flipcard.toml set the same values; a flag beats both, and the format brings its own defaults
-under them. A card that doesn't fit is an error naming the slide; `flipcard lint` finds them all.
+pad, preset, fps, width, hold, enter, fade, transition, pace, colours, gif-width, gif-fps) and
+`[film]` in flipcard.toml set the same values; a flag beats both, and the format brings its own
+defaults under them. A card that doesn't fit is an error naming the slide; `flipcard lint` finds them all.
 
 Exit codes:
   0  written
@@ -100,6 +102,10 @@ pub(crate) struct FilmArgs {
     /// [default: phone for tall, none otherwise].
     #[arg(long, value_name = "NAME")]
     pub(crate) safe: Option<flipkit::Safe>,
+    /// What a tall film is placed on: none or square, a full-height panel on a square canvas
+    /// over a blurred copy of itself, the safe area then none (--pad square) [default: none].
+    #[arg(long, value_name = "NAME")]
+    pub(crate) pad: Option<flipkit::Pad>,
     /// How the words come in: flip, rise, slide, fade, pop, still, type, karaoke, move or stack;
     /// a scene sets its own with `:::{scene} pop` [default: flip, rise for tall and square].
     #[arg(long, value_name = "NAME")]
@@ -146,6 +152,7 @@ impl FilmArgs {
         flipkit::Settings {
             format: self.format,
             safe: self.safe,
+            pad: self.pad,
             preset: self.preset,
             fps: self.fps,
             width: self.width,

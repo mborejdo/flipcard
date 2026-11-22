@@ -105,6 +105,7 @@ frontmatter beats file beats the format's defaults.
 | format | `--format` | wide | `wide` (16:9), `tall` (9:16) or `square` (1:1) |
 | preset | `--preset` | flip | how the words come in, see Motion; `rise` for tall |
 | safe | `--safe` | none | `phone` keeps the content clear of a phone app's bars, captions and buttons |
+| pad | `--pad` | none | `square` puts a tall film on a square canvas, see below |
 | fps | `--fps` | 10 | frames per second |
 | width | `--width` | 640 | pixels, even (the MP4 needs it); the height follows the format |
 | hold | `--hold` | 7 | seconds every scene stays at least, build-in included (motion: unset) |
@@ -120,6 +121,15 @@ frontmatter beats file beats the format's defaults.
 and gif-fps 15: the MP4 is the film for the phone, the GIF a preview. `square` is the same at 1080x1080
 without the safe area. The card's content sits inside the safe area, centred; what doesn't fit
 there is an overflow, as on a wide card.
+
+`pad: square` (tall only) makes a square film of a tall one: the tall frame scaled to the full
+height as a panel in the middle, a 2 px edge in the theme's `border` colour left and right, and
+bars of the same frame, blurred until no shape is left, toned down, lit by a glow in the theme's
+`accent` colour next to the panel and darkened towards the corners. At 1080 the film is
+1080x1080 with a 608 px panel. The MP4 has a fine grain on the bars that moves every frame (one
+pattern, shifted, so the encoder keeps up); the GIF has none, as grain changes every pixel of the
+bars from frame to frame and would bloat its delta frames. A padded film keeps the whole card: the safe area defaults to `none` (a phone
+app's bars sit outside the square), `--safe phone` still applies. The cards (`--cards`) stay tall.
 
 `hold` is the minimum: a scene with more words than `hold` covers at `pace` (first step: the
 heading and all shown at once; then each `+` bullet) stays for its reading time. `pace: 0` holds

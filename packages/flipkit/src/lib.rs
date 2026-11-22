@@ -43,7 +43,7 @@ pub use config::{Config, Settings};
 pub use deckmark;
 pub use deckmark::deck::Loaded;
 pub use filmstrip::{Frame, Transition};
-pub use format::{Format, ParseNameError, Safe};
+pub use format::{Format, Pad, ParseNameError, Safe};
 pub use motion::Preset;
 
 /// Distinct frames drawn side by side before they go to the encoders.
@@ -56,6 +56,8 @@ pub struct Options {
     pub format: Format,
     /// The area the content stays in.
     pub safe: Safe,
+    /// What the film is placed on; square needs a tall film.
+    pub pad: Pad,
     /// Frames per second.
     pub fps: u16,
     /// Width in pixels; the height follows the format. Even numbers only (the MP4 needs them).
@@ -88,6 +90,7 @@ impl Default for Options {
         Self {
             format: Format::Wide,
             safe: Safe::None,
+            pad: Pad::None,
             fps: 10,
             width: 640,
             preset: Preset::Flip,
@@ -106,17 +109,28 @@ impl Default for Options {
 impl Options {
     /// Resolve the options: `flags` beat the deck's frontmatter (`source`), which beats the
     /// config's `[film]` table, which beats the format's defaults, which beat the built-in ones.
+    /// A padded film keeps the whole card: its safe area defaults to none.
     pub fn resolve(flags: Settings, source: &str, config: &Config) -> Result<Self> {
         let front = colonmark::Frontmatter::read(source);
         let deck = Settings::from_frontmatter(|key| front.get(key).map(str::to_string))?;
         let set = flags.over(deck).over(config.film);
         let format = set.format.unwrap_or_default();
-        let set = set.over(format.defaults());
+        let pad = set.pad.unwrap_or_default();
+        if pad == Pad::Square && format != Format::Tall {
+            let got = format!("{format:?}").to_lowercase();
+            bail!("pad: square needs format tall, got \"{got}\"");
+        }
+        let mut defaults = format.defaults();
+        if pad != Pad::None {
+            defaults.safe = Some(Safe::None);
+        }
+        let set = set.over(defaults);
         let base = Self::default();
         let (fps, width) = (set.fps.unwrap_or(base.fps), set.width.unwrap_or(base.width));
         Ok(Self {
             format,
             safe: set.safe.unwrap_or(base.safe),
+            pad,
             fps,
             width,
             preset: set.preset.unwrap_or(base.preset),
@@ -128,6 +142,20 @@ impl Options {
             colours: set.colours.unwrap_or(base.colours),
             gif_width: set.gif_width.unwrap_or(width),
             gif_fps: set.gif_fps.unwrap_or(fps),
+        })
+    }
+
+    /// The compositor of a padded film, drawn in the deck's border and accent colours.
+    fn pad(&self, loaded: &Loaded) -> Option<filmstrip::pad::Square> {
+        let palette = loaded.deck.palette();
+        let rgb = |c: swatchbook::Rgb| [c.0, c.1, c.2];
+        (self.pad == Pad::Square).then(|| {
+            filmstrip::pad::Square::new(
+                self.width,
+                self.height(),
+                rgb(palette.border),
+                rgb(palette.accent),
+            )
         })
     }
 
@@ -244,8 +272,14 @@ pub fn render(loaded: &Loaded, options: &Options, outputs: Outputs) -> Result<Re
         })
         .collect();
     let runs: Vec<&[Shot]> = shots.chunk_by(PartialEq::eq).collect();
+    let pad = options.pad(loaded);
+    let padded = |frames: Vec<Arc<Frame>>| match &pad {
+        Some(pad) => frames.par_iter().map(|f| Arc::new(pad.frame(f))).collect(),
+        None => frames,
+    };
+    let keys = padded(stills.clone());
     let [gif, mp4] = std::thread::scope(|scope| {
-        let film = Film::new(scope, options, outputs, &stills)?;
+        let film = Film::new(scope, options, outputs, &keys, pad.clone())?;
         for chunk in runs.chunks(CHUNK) {
             let frames = run(&engine, chunk, |engine, run| {
                 Ok(match run[0] {
@@ -260,6 +294,7 @@ pub fn render(loaded: &Loaded, options: &Options, outputs: Outputs) -> Result<Re
                     },
                 })
             })?;
+            let frames = padded(frames);
             // Typst's cache keeps what the last chunk drew: a long film stays small
             Engine::evict(1);
             for (frame, run) in frames.iter().zip(chunk) {
@@ -268,7 +303,7 @@ pub fn render(loaded: &Loaded, options: &Options, outputs: Outputs) -> Result<Re
         }
         film.finish()
     })?;
-    drop(firsts);
+    drop((firsts, keys));
     Ok(Rendered {
         stills: stills.into_iter().map(Arc::unwrap_or_clone).collect(),
         slide_of: cards.iter().map(|c| c.slide).collect(),
@@ -285,6 +320,12 @@ type Encoder<'s> = (
     ScopedJoinHandle<'s, Result<Vec<u8>>>,
 );
 
+/// The video encoder of a padded film behind the thread that adds the grain.
+type Grained<'s> = (
+    SyncSender<filmstrip::video::Picture>,
+    ScopedJoinHandle<'s, Result<Vec<u8>>>,
+);
+
 /// The encoders the film streams into, side by side with the drawing.
 struct Film<'s> {
     gif: Option<Encoder<'s>>,
@@ -297,6 +338,7 @@ impl<'s> Film<'s> {
         options: &Options,
         outputs: Outputs,
         stills: &[Arc<Frame>],
+        pad: Option<filmstrip::pad::Square>,
     ) -> Result<Self> {
         let Some(first) = stills.first() else {
             bail!("the deck has no slides");
@@ -327,15 +369,57 @@ impl<'s> Film<'s> {
                 ))
             })
             .transpose()?;
+        // The MP4 of a padded film has grain, moved every frame, added and converted on a
+        // thread ahead of the encoder; the GIF has none, as grain would change every pixel of
+        // the bars from frame to frame and bloat the delta frames.
         let mp4 = outputs
             .mp4
             .then(|| {
-                let writer = filmstrip::video::Writer::new(first.width, first.height, options.fps)?;
-                Ok::<_, anyhow::Error>(encoder(
+                let mut writer =
+                    filmstrip::video::Writer::new(first.width, first.height, options.fps)?;
+                let Some(pad) = pad else {
+                    return Ok::<_, anyhow::Error>(encoder(
+                        scope,
+                        writer,
+                        filmstrip::video::Writer::push,
+                        filmstrip::video::Writer::finish,
+                    ));
+                };
+                let (pictures, inbox) = sync_channel::<filmstrip::video::Picture>(CHUNK);
+                let video = scope.spawn(move || {
+                    for picture in inbox {
+                        writer.push_picture(&picture, 1)?;
+                    }
+                    writer.finish()
+                });
+                Ok(encoder(
                     scope,
-                    writer,
-                    filmstrip::video::Writer::push,
-                    filmstrip::video::Writer::finish,
+                    (Some((pictures, video)), 0u64),
+                    move |(state, at): &mut (Option<Grained<'s>>, u64), frame, count| {
+                        let Some((pictures, _)) = state else {
+                            bail!("the video encoder stopped");
+                        };
+                        for _ in 0..count {
+                            let mut grained = frame.clone();
+                            pad.grain(&mut grained, *at);
+                            *at += 1;
+                            if pictures
+                                .send(filmstrip::video::Picture::new(&grained)?)
+                                .is_err()
+                            {
+                                // the encoder failed: its error comes out of the join
+                                break;
+                            }
+                        }
+                        Ok(())
+                    },
+                    |(state, _)| {
+                        let (pictures, video) = state.context("the video encoder stopped")?;
+                        drop(pictures);
+                        video
+                            .join()
+                            .map_err(|_| anyhow::anyhow!("an encoder failed"))?
+                    },
                 ))
             })
             .transpose()?;
@@ -587,6 +671,43 @@ one two three four five six seven eight nine ten
         );
         assert_eq!(crowded(&more, &options)[0].2, 14);
         assert_eq!(crowded(&more, &quick()), []);
+    }
+
+    #[test]
+    fn a_padded_tall_film_is_square_without_the_safe_area_and_pad_needs_tall() {
+        let loaded = load("---\nformat: tall\npad: square\n---\n# Padded\n\n- one\n+ two\n");
+        let flags = Settings {
+            width: Some(128),
+            fps: Some(4),
+            gif_width: Some(64),
+            ..Settings::default()
+        };
+        let options = Options::resolve(flags, &loaded.source, &Config::default()).unwrap();
+        assert_eq!((options.pad, options.safe), (Pad::Square, Safe::None));
+        let rendered = render(&loaded, &options, BOTH).unwrap();
+        assert_eq!(
+            (rendered.stills[0].width, rendered.stills[0].height),
+            (128, 228),
+            "the cards stay tall"
+        );
+        let gif = rendered.gif.unwrap();
+        let size = |at: usize| u16::from_le_bytes([gif[at], gif[at + 1]]);
+        assert_eq!((size(6), size(8)), (64, 64));
+        let phone = Settings {
+            safe: Some(Safe::Phone),
+            ..flags
+        };
+        let options = Options::resolve(phone, &loaded.source, &Config::default()).unwrap();
+        assert_eq!(options.safe, Safe::Phone, "a safe area set still applies");
+        let wide = Settings {
+            format: Some(Format::Wide),
+            ..flags
+        };
+        let error = Options::resolve(wide, &loaded.source, &Config::default()).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "pad: square needs format tall, got \"wide\""
+        );
     }
 
     fn tall(source: &str, fps: u16) -> Rendered {

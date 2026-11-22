@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## Unreleased
 
+### Added
+
+- `pad: square` (`--pad square`, `[film] pad`): a tall film on a 1:1 canvas, the tall frame a
+  full-height panel over a blurred, toned-down copy of itself with a glow in the accent colour,
+  a vignette and, in the MP4, a fine grain. Tall only; the safe area then defaults to none.
+- filmstrip: `pad::Square`, the compositor.
+
 ### Fixed
 - Square films take the phone look: big centred words, page-on, words that rise.
 - A run of bold words only tints; a lone bold word still pulses. Pulsing together, the words

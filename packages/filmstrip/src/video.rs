@@ -32,6 +32,40 @@ fn level(w: usize, h: usize, fps: u16) -> u8 {
         .map_or(52, |&(idc, ..)| idc)
 }
 
+/// A frame in the encoder's colours (I420), made ahead so another thread can do the conversion.
+pub struct Picture {
+    yuv: YuvFrame,
+    size: (u32, u32),
+}
+
+impl std::fmt::Debug for Picture {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Picture")
+            .field("size", &self.size)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Picture {
+    /// The picture of `frame`; its dimensions even.
+    pub fn new(frame: &Frame) -> Result<Self> {
+        if !frame.is_consistent()
+            || !frame.width.is_multiple_of(2)
+            || !frame.height.is_multiple_of(2)
+        {
+            bail!(
+                "video needs even dimensions, got {}x{}",
+                frame.width,
+                frame.height
+            );
+        }
+        Ok(Self {
+            yuv: i420(frame),
+            size: (frame.width, frame.height),
+        })
+    }
+}
+
 /// An MP4 written frame by frame: each frame goes through the encoder at once, each picture
 /// into the container as soon as the next one starts.
 pub struct Writer {
@@ -96,12 +130,16 @@ impl Writer {
 
     /// Encode `frame`, the video's size, as the next `count` frames.
     pub fn push(&mut self, frame: &Frame, count: usize) -> Result<()> {
-        if (frame.width, frame.height) != self.size || !frame.is_consistent() {
+        self.push_picture(&Picture::new(frame)?, count)
+    }
+
+    /// Encode `picture`, the video's size, as the next `count` frames.
+    pub fn push_picture(&mut self, picture: &Picture, count: usize) -> Result<()> {
+        if picture.size != self.size {
             bail!("frames differ in size");
         }
-        let yuv = i420(frame);
         for _ in 0..count {
-            let stream = self.enc.encode(&yuv);
+            let stream = self.enc.encode(&picture.yuv);
             self.take(&stream)?;
         }
         Ok(())

@@ -133,7 +133,39 @@ impl TryFrom<String> for Safe {
     }
 }
 
-/// The error of a name that is not one of a value's names ([`Format`], [`Safe`], [`Preset`]):
+/// What the film is placed on.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "String")]
+pub enum Pad {
+    /// Nothing: the film is the canvas.
+    #[default]
+    None,
+    /// A tall film as a full-height panel on a square canvas, over a blurred copy of itself.
+    Square,
+}
+
+impl FromStr for Pad {
+    type Err = ParseNameError;
+
+    fn from_str(name: &str) -> Result<Self, ParseNameError> {
+        Ok(match name.trim().to_ascii_lowercase().as_str() {
+            "none" => Self::None,
+            "square" => Self::Square,
+            _ => return Err(ParseNameError::new("pad", "none or square", name)),
+        })
+    }
+}
+
+impl TryFrom<String> for Pad {
+    type Error = ParseNameError;
+
+    fn try_from(name: String) -> Result<Self, ParseNameError> {
+        name.parse()
+    }
+}
+
+/// The error of a name that is not one of a value's names ([`Format`], [`Safe`], [`Pad`],
+/// [`Preset`]):
 /// the key, what it accepts and what it got.
 ///
 /// [`Preset`]: crate::Preset
@@ -182,6 +214,11 @@ mod tests {
         assert_eq!(
             "tv".parse::<Safe>().unwrap_err().to_string(),
             "safe: expected none or phone, got \"tv\""
+        );
+        assert_eq!(" Square ".parse::<Pad>().unwrap(), Pad::Square);
+        assert_eq!(
+            "box".parse::<Pad>().unwrap_err().to_string(),
+            "pad: expected none or square, got \"box\""
         );
     }
 

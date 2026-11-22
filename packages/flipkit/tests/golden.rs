@@ -1,5 +1,5 @@
-//! The films' bytes: SHA-256 of every file of the wide example and of a small tall render of the
-//! phone example, against `golden.sha256`. `FLIPCARD_BLESS=1` rewrites that file.
+//! The films' bytes: SHA-256 of every file of the wide example, of a small tall render of the
+//! phone example and of its films padded square, against `golden.sha256`. `FLIPCARD_BLESS=1` rewrites that file.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -55,6 +55,16 @@ fn the_films_are_the_golden_bytes() {
         ..Settings::default()
     };
     files.extend(films("phone", "examples/phone/script.md", small).unwrap());
+    let padded = Settings {
+        pad: Some(flipkit::Pad::Square),
+        ..small
+    };
+    files.extend(
+        films("padded", "examples/phone/script.md", padded)
+            .unwrap()
+            .into_iter()
+            .filter(|(name, _)| !name.contains("/cards/")),
+    );
     let mut actual = String::new();
     for (name, bytes) in &files {
         for byte in Sha256::digest(bytes) {

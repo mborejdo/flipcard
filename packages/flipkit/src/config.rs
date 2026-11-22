@@ -28,6 +28,8 @@ pub struct Settings {
     pub fps: Option<u16>,
     /// Width in pixels, even (640).
     pub width: Option<u32>,
+    /// What a tall film is placed on: none or square (none).
+    pub pad: Option<crate::Pad>,
     /// How the words come in: flip, rise, slide, fade, pop, still, type, karaoke, move or stack
     /// (flip; rise for tall and square).
     pub preset: Option<crate::Preset>,
@@ -58,6 +60,7 @@ impl Settings {
         Self {
             format: self.format.or(under.format),
             safe: self.safe.or(under.safe),
+            pad: self.pad.or(under.pad),
             preset: self.preset.or(under.preset),
             fps: self.fps.or(under.fps),
             width: self.width.or(under.width),
@@ -72,9 +75,9 @@ impl Settings {
         }
     }
 
-    /// Read the film keys of a deck's frontmatter (`format`, `safe`, `preset`, `fps`, `width`, `hold`,
-    /// `enter`, `fade`, `transition`, `pace`, `colours`, `gif-width`, `gif-fps`); a value that is
-    /// not a number, or not one of the key's names, is an error naming the key.
+    /// Read the film keys of a deck's frontmatter (`format`, `safe`, `pad`, `preset`, `fps`,
+    /// `width`, `hold`, `enter`, `fade`, `transition`, `pace`, `colours`, `gif-width`, `gif-fps`);
+    /// a value that is not a number, or not one of the key's names, is an error naming the key.
     pub fn from_frontmatter(get: impl Fn(&str) -> Option<String>) -> Result<Self> {
         fn number<T: FromStr>(key: &str, value: Option<String>) -> Result<Option<T>> {
             value
@@ -94,6 +97,7 @@ impl Settings {
         Ok(Self {
             format: named(get("format"))?,
             safe: named(get("safe"))?,
+            pad: named(get("pad"))?,
             preset: named(get("preset"))?,
             fps: number("fps", get("fps"))?,
             width: number("width", get("width"))?,
@@ -247,6 +251,7 @@ impl fmt::Display for Config {
                 set.format.map(|v| format!("{v:?}").to_lowercase()),
             ),
             ("safe", set.safe.map(|v| format!("{v:?}").to_lowercase())),
+            ("pad", set.pad.map(|v| format!("{v:?}").to_lowercase())),
             ("preset", set.preset.map(|v| v.name().to_string())),
             ("fps", set.fps.map(|v| v.to_string())),
             ("width", set.width.map(|v| v.to_string())),
