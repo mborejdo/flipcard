@@ -57,7 +57,7 @@ hold = 5                  # also format, safe, preset, fps, width, enter, fade, 
 ## How it works
 
 - `deckmark` (from presiterm) reads the deck into slides of blocks.
-- `flipkit` draws every slide at every build-in instant as a Typst card (`film.typ`, in the
+- `flipkit` draws every slide at every build-in instant as a Typst card (`typ/film.typ`, in the
   deck's tokens) and times the scenes. With a motion preset Rust owns the time: the card is laid
   out once at rest, and per frame a small JSON of word looks moves, scales and fades the words
   inside their boxes (`typ/motion.typ`), so nothing reflows. `move` and `stack` also ask Typst

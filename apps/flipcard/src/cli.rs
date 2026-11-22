@@ -38,8 +38,8 @@ Exit codes:
 
 const LINT_FOOTER: &str = "\
 Examples:
-  flipcard lint talk/slides.md       one line per card that overflows, and per tall slide
-                                     with more than 12 words (a warning)
+  flipcard lint talk/slides.md       an error line per card that overflows, a warning line per
+                                     tall slide with more than 12 words, then N errors, N warnings
 
 Exit codes:
   0  every card fits
@@ -58,7 +58,7 @@ Exit codes:
   2  the file can't be read, has an unknown key or a malformed value";
 
 /// The `flipcard` command line: a deck to render, or a subcommand.
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 #[command(
     name = "flipcard",
     version,
@@ -74,7 +74,7 @@ pub(crate) struct Cli {
 }
 
 /// The flags of a render.
-#[derive(clap::Args)]
+#[derive(Debug, clap::Args)]
 pub(crate) struct FilmArgs {
     /// The deck, e.g. talk/slides.md.
     pub(crate) file: Option<PathBuf>,
@@ -93,49 +93,49 @@ pub(crate) struct FilmArgs {
     /// Play the GIF inline in WezTerm or iTerm2 after writing.
     #[arg(long)]
     pub(crate) preview: bool,
-    /// The canvas: wide (16:9), tall (9:16) or square (1:1); default wide.
+    /// The canvas: wide (16:9), tall (9:16) or square (1:1) [default: wide].
     #[arg(long, value_name = "NAME")]
     pub(crate) format: Option<flipkit::Format>,
-    /// The area the content stays in: none or phone (clear of a phone app's bars and buttons);
-    /// default phone for tall, none otherwise.
+    /// The area the content stays in: none or phone (clear of a phone app's bars and buttons)
+    /// [default: phone for tall, none otherwise].
     #[arg(long, value_name = "NAME")]
     pub(crate) safe: Option<flipkit::Safe>,
     /// How the words come in: flip, rise, slide, fade, pop, still, type, karaoke, move or stack;
-    /// default flip, rise for tall. A scene sets its own with `:::{scene} pop`.
+    /// a scene sets its own with `:::{scene} pop` [default: flip, rise for tall].
     #[arg(long, value_name = "NAME")]
     pub(crate) preset: Option<flipkit::Preset>,
-    /// Frames per second (--fps 12); default 10, 30 for tall and square.
+    /// Frames per second (--fps 12) [default: 10, 30 for tall and square].
     #[arg(long, value_name = "N")]
     pub(crate) fps: Option<u16>,
-    /// Width in pixels, even (--width 960); default 640, 1080 for tall and square; the height
-    /// follows the format.
+    /// Width in pixels, even; the height follows the format (--width 960) [default: 640, 1080
+    /// for tall and square].
     #[arg(long, value_name = "PX")]
     pub(crate) width: Option<u32>,
-    /// Seconds every scene stays at least, build-in included (--hold 5); default 7 for flip.
+    /// Seconds every scene stays at least, build-in included (--hold 5) [default: 7 for flip].
     #[arg(long, value_name = "S")]
     pub(crate) hold: Option<f32>,
-    /// Seconds of build-in at the start of every scene (--enter 1.2); default 1.6.
+    /// Seconds of build-in at the start of every scene (--enter 1.2) [default: 1.6].
     #[arg(long, value_name = "S")]
     pub(crate) enter: Option<f32>,
-    /// Seconds a transition between scenes takes (--fade 0.3); default 0.4.
+    /// Seconds a transition between scenes takes (--fade 0.3) [default: 0.4].
     #[arg(long, value_name = "S")]
     pub(crate) fade: Option<f32>,
     /// How one scene gives way to the next: fade, wipe, push, pixelize, circle, split or cut
-    /// (--transition wipe); default fade.
+    /// (--transition wipe) [default: fade].
     #[arg(long, value_name = "NAME")]
     pub(crate) transition: Option<flipkit::Transition>,
-    /// Words per minute a wordy scene is held for, 0 for a fixed hold (--pace 160); default 200.
+    /// Words per minute a wordy scene is held for, 0 for a fixed hold (--pace 160) [default: 200].
     #[arg(long, value_name = "WPM")]
     pub(crate) pace: Option<f32>,
-    /// Colours of the GIF palette, 2 to 255 (--colours 64); default 48.
+    /// Colours of the GIF palette, 2 to 255 (--colours 64) [default: 48].
     #[arg(long, value_name = "N")]
     pub(crate) colours: Option<usize>,
-    /// Width of the GIF, the film scaled down by a whole factor; default the width, 360 for tall
-    /// and square.
+    /// Width of the GIF, the film scaled down by a whole factor [default: the width, 360 for
+    /// tall and square].
     #[arg(long, value_name = "PX")]
     pub(crate) gif_width: Option<u32>,
-    /// Frames per second of the GIF, every n-th frame of the film; default the fps, 15 for tall
-    /// and square.
+    /// Frames per second of the GIF, every n-th frame of the film [default: the fps, 15 for
+    /// tall and square].
     #[arg(long, value_name = "N")]
     pub(crate) gif_fps: Option<u16>,
 }
@@ -162,7 +162,7 @@ impl FilmArgs {
 }
 
 /// The subcommands.
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 pub(crate) enum Command {
     /// Draw every card fully built and report the ones that overflow.
     #[command(after_help = LINT_FOOTER)]
@@ -173,7 +173,7 @@ pub(crate) enum Command {
     /// Show which flipcard.toml applies and its values.
     #[command(after_help = CONFIG_FOOTER)]
     Config {
-        /// A deck (or its folder) to look up from; default: the current folder.
+        /// A deck (or its folder) to look up from [default: the current folder].
         path: Option<PathBuf>,
     },
 }

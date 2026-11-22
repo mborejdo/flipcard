@@ -80,29 +80,27 @@ impl Settings {
             value
                 .map(|v| {
                     v.trim().parse::<T>().ok().with_context(|| {
-                        format!("frontmatter {key}: expected a number, got \"{v}\"")
+                        format!("frontmatter: {key}: expected a number, got \"{v}\"")
                     })
                 })
                 .transpose()
         }
-        fn named<T: FromStr<Err = anyhow::Error>>(
-            key: &str,
+        // The parse error names the key itself.
+        fn named<T: FromStr<Err: std::error::Error + Send + Sync + 'static>>(
             value: Option<String>,
         ) -> Result<Option<T>> {
-            value
-                .map(|v| v.parse().with_context(|| format!("frontmatter {key}")))
-                .transpose()
+            value.map(|v| v.parse().context("frontmatter")).transpose()
         }
         Ok(Self {
-            format: named("format", get("format"))?,
-            safe: named("safe", get("safe"))?,
-            preset: named("preset", get("preset"))?,
+            format: named(get("format"))?,
+            safe: named(get("safe"))?,
+            preset: named(get("preset"))?,
             fps: number("fps", get("fps"))?,
             width: number("width", get("width"))?,
             hold: number("hold", get("hold"))?,
             enter: number("enter", get("enter"))?,
             fade: number("fade", get("fade"))?,
-            transition: named("transition", get("transition"))?,
+            transition: named(get("transition"))?,
             pace: number("pace", get("pace"))?,
             colours: number("colours", get("colours"))?,
             gif_width: number("gif-width", get("gif-width"))?,
@@ -213,12 +211,12 @@ impl Config {
 }
 
 impl fmt::Display for Config {
-    fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let from = self
             .file
             .as_deref()
             .map_or_else(|| "default".to_string(), |p| p.display().to_string());
-        writeln!(out, "config: {from}")?;
+        writeln!(f, "config: {from}")?;
         let fonts: Vec<String> = self
             .look
             .faces
@@ -226,7 +224,7 @@ impl fmt::Display for Config {
             .map(|p| p.display().to_string())
             .collect();
         writeln!(
-            out,
+            f,
             "  fonts = {}",
             if fonts.is_empty() {
                 "built-in".to_string()
@@ -235,37 +233,40 @@ impl fmt::Display for Config {
             }
         )?;
         writeln!(
-            out,
+            f,
             "  logo  = {}",
             self.look
                 .logo
                 .as_deref()
                 .map_or_else(|| "none".to_string(), |p| p.display().to_string())
         )?;
-        let f = &self.film;
+        let set = &self.film;
         let film: Vec<String> = [
-            ("format", f.format.map(|v| format!("{v:?}").to_lowercase())),
-            ("safe", f.safe.map(|v| format!("{v:?}").to_lowercase())),
-            ("preset", f.preset.map(|v| v.name().to_string())),
-            ("fps", f.fps.map(|v| v.to_string())),
-            ("width", f.width.map(|v| v.to_string())),
-            ("hold", f.hold.map(|v| v.to_string())),
-            ("enter", f.enter.map(|v| v.to_string())),
-            ("fade", f.fade.map(|v| v.to_string())),
+            (
+                "format",
+                set.format.map(|v| format!("{v:?}").to_lowercase()),
+            ),
+            ("safe", set.safe.map(|v| format!("{v:?}").to_lowercase())),
+            ("preset", set.preset.map(|v| v.name().to_string())),
+            ("fps", set.fps.map(|v| v.to_string())),
+            ("width", set.width.map(|v| v.to_string())),
+            ("hold", set.hold.map(|v| v.to_string())),
+            ("enter", set.enter.map(|v| v.to_string())),
+            ("fade", set.fade.map(|v| v.to_string())),
             (
                 "transition",
-                f.transition.map(|v| format!("{v:?}").to_lowercase()),
+                set.transition.map(|v| format!("{v:?}").to_lowercase()),
             ),
-            ("pace", f.pace.map(|v| v.to_string())),
-            ("colours", f.colours.map(|v| v.to_string())),
-            ("gif-width", f.gif_width.map(|v| v.to_string())),
-            ("gif-fps", f.gif_fps.map(|v| v.to_string())),
+            ("pace", set.pace.map(|v| v.to_string())),
+            ("colours", set.colours.map(|v| v.to_string())),
+            ("gif-width", set.gif_width.map(|v| v.to_string())),
+            ("gif-fps", set.gif_fps.map(|v| v.to_string())),
         ]
         .into_iter()
         .filter_map(|(key, value)| Some(format!("{key} = {}", value?)))
         .collect();
         write!(
-            out,
+            f,
             "  film  = {}",
             if film.is_empty() {
                 "built-in".to_string()
@@ -333,7 +334,16 @@ mod tests {
             (set.fps, set.hold, set.pace),
             (Some(12), Some(4.0), Some(0.0))
         );
-        assert!(Settings::from_frontmatter(|_| Some("x".into())).is_err());
+        let error = Settings::from_frontmatter(|_| Some("x".into())).unwrap_err();
+        assert_eq!(
+            format!("{error:#}"),
+            "frontmatter: format: expected wide, tall or square (16:9, 9:16, 1:1), got \"x\""
+        );
+        let error = Settings::from_frontmatter(|key| (key == "fps").then(|| "x".into()));
+        assert_eq!(
+            error.unwrap_err().to_string(),
+            "frontmatter: fps: expected a number, got \"x\""
+        );
         let tall = Settings::from_frontmatter(|key| (key == "format").then(|| "tall".into()));
         assert_eq!(tall.unwrap().format, Some(crate::Format::Tall));
     }

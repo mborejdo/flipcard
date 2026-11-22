@@ -10,15 +10,16 @@
 mod cli;
 
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
-use anyhow::{Result, bail, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use clap::Parser;
 use flipkit::deckmark::deck_dir;
 use flipkit::{Config, Options, output_path};
 
 use crate::cli::{Cli, Command, FilmArgs};
 
-fn run() -> Result<i32> {
+fn run() -> Result<u8> {
     let cli = Cli::parse();
     match cli.command {
         Some(Command::Lint { file }) => {
@@ -27,21 +28,23 @@ fn run() -> Result<i32> {
             let options = Options::resolve(flipkit::Settings::default(), &loaded.source, &config)?;
             let overflows = flipkit::check(&loaded, &options)?;
             for overflow in &overflows {
-                println!("{overflow}");
-            }
-            for (slide, title, words) in flipkit::crowded(&loaded, &options) {
                 println!(
-                    "slide {} ({title}): {words} words on one tall screen, more than {}; it pages on, or trim it",
+                    "slide {} ({}): error: the card overflows onto {} pages; trim it",
+                    overflow.slide + 1,
+                    overflow.title,
+                    overflow.pages
+                );
+            }
+            let crowded = flipkit::crowded(&loaded, &options);
+            for (slide, title, words) in &crowded {
+                println!(
+                    "slide {} ({title}): warning: {words} words on one tall screen, more than {}; it pages on, or trim it",
                     slide + 1,
                     flipkit::TALL_WORDS
                 );
             }
-            println!(
-                "{} of {} cards overflow",
-                overflows.len(),
-                loaded.deck.slides.len()
-            );
-            Ok(i32::from(!overflows.is_empty()))
+            println!("{} errors, {} warnings", overflows.len(), crowded.len());
+            Ok(u8::from(!overflows.is_empty()))
         },
         Some(Command::Config { path }) => {
             let from = path.as_deref().unwrap_or_else(|| Path::new("."));
@@ -53,7 +56,7 @@ fn run() -> Result<i32> {
 }
 
 /// Render the deck and write the files asked for (the GIF when none is).
-fn film(args: &FilmArgs) -> Result<i32> {
+fn film(args: &FilmArgs) -> Result<u8> {
     let Some(file) = args.file.as_deref() else {
         bail!("no deck given: run `flipcard talk/slides.md`, or see `flipcard --help`")
     };
@@ -68,10 +71,9 @@ fn film(args: &FilmArgs) -> Result<i32> {
     let out = args.out.as_deref();
     let write = |path: PathBuf, bytes: &[u8]| -> Result<()> {
         if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
+            std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
         }
-        std::fs::write(&path, bytes)
-            .map_err(|e| anyhow::anyhow!("write {}: {e}", path.display()))?;
+        std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))?;
         println!("{}  {} KB", path.display(), bytes.len() / 1024);
         Ok(())
     };
@@ -126,13 +128,12 @@ fn base64(bytes: &[u8]) -> String {
     out
 }
 
-fn main() {
+fn main() -> ExitCode {
     match run() {
-        Ok(0) => {},
-        Ok(code) => std::process::exit(code),
+        Ok(code) => ExitCode::from(code),
         Err(e) => {
             eprintln!("flipcard: {e:#}");
-            std::process::exit(2);
+            ExitCode::from(2)
         },
     }
 }

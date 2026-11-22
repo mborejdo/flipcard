@@ -10,7 +10,7 @@
 //! The deck is the presiterm dialect, read by [`deckmark`]. This file is the spine: [`Options`],
 //! [`render`] and the encoders; [`config`] reads `flipcard.toml`, [`format`](mod@format) the
 //! canvas; `card` makes the scenes, `script` reads `:::{scene}` and numbers the words, `motion`
-//! times them. The card layout is `typ/motion.typ` and `film.typ`, both embedded.
+//! times them. The card layout is `typ/motion.typ` and `typ/film.typ`, both embedded.
 
 // Pixel arithmetic converts between usize, u32 and f32; a card is a few thousand pixels, far
 // inside every range.
@@ -43,7 +43,7 @@ pub use config::{Config, Settings};
 pub use deckmark;
 pub use deckmark::deck::Loaded;
 pub use filmstrip::{Frame, Transition};
-pub use format::{Format, Safe};
+pub use format::{Format, ParseNameError, Safe};
 pub use motion::Preset;
 
 /// Distinct frames drawn side by side before they go to the encoders.
@@ -188,9 +188,9 @@ pub struct Overflow {
 }
 
 impl std::fmt::Display for Overflow {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
-            out,
+            f,
             "slide {} ({}): the card overflows onto {} pages; trim it",
             self.slide + 1,
             self.title,

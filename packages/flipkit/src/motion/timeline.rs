@@ -151,11 +151,11 @@ impl Timeline {
                 continue;
             }
             // a new line once a word sits lower than half the one before
-            if last.is_none_or(|l| spot.y > l.h.mul_add(0.5, l.y)) {
+            if last.is_none_or(|l| spot.y > l.height.mul_add(0.5, l.y)) {
                 self.lines.push((cue.word.id, 0.0));
             }
             if let Some(line) = self.lines.last_mut() {
-                line.1 = line.1.max(spot.y + spot.h);
+                line.1 = line.1.max(spot.y + spot.height);
             }
             cue.line = self.lines.len() - 1;
             last = Some(spot);
@@ -499,8 +499,8 @@ mod tests {
         Spot {
             x,
             y,
-            w: 30.0,
-            h: 7.0,
+            width: 30.0,
+            height: 7.0,
             size: 10.0,
         }
     }

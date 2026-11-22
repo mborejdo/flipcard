@@ -1,9 +1,9 @@
 //! The canvas of a film: its aspect ([`Format`]), the area kept clear of a phone's buttons and
 //! captions ([`Safe`]), and the defaults each format brings.
 
+use std::fmt;
 use std::str::FromStr;
 
-use anyhow::{Result, bail};
 use serde::Deserialize;
 
 use crate::Settings;
@@ -59,22 +59,28 @@ impl Format {
 }
 
 impl FromStr for Format {
-    type Err = anyhow::Error;
+    type Err = ParseNameError;
 
-    fn from_str(name: &str) -> Result<Self> {
+    fn from_str(name: &str) -> Result<Self, ParseNameError> {
         Ok(match name.trim().to_ascii_lowercase().as_str() {
             "wide" | "16:9" => Self::Wide,
             "tall" | "9:16" => Self::Tall,
             "square" | "1:1" => Self::Square,
-            _ => bail!("format: expected wide, tall or square (16:9, 9:16, 1:1), got \"{name}\""),
+            _ => {
+                return Err(ParseNameError::new(
+                    "format",
+                    "wide, tall or square (16:9, 9:16, 1:1)",
+                    name,
+                ));
+            },
         })
     }
 }
 
 impl TryFrom<String> for Format {
-    type Error = anyhow::Error;
+    type Error = ParseNameError;
 
-    fn try_from(name: String) -> Result<Self> {
+    fn try_from(name: String) -> Result<Self, ParseNameError> {
         name.parse()
     }
 }
@@ -102,24 +108,58 @@ impl Safe {
 }
 
 impl FromStr for Safe {
-    type Err = anyhow::Error;
+    type Err = ParseNameError;
 
-    fn from_str(name: &str) -> Result<Self> {
+    fn from_str(name: &str) -> Result<Self, ParseNameError> {
         Ok(match name.trim().to_ascii_lowercase().as_str() {
             "none" => Self::None,
             "phone" => Self::Phone,
-            _ => bail!("safe: expected none or phone, got \"{name}\""),
+            _ => return Err(ParseNameError::new("safe", "none or phone", name)),
         })
     }
 }
 
 impl TryFrom<String> for Safe {
-    type Error = anyhow::Error;
+    type Error = ParseNameError;
 
-    fn try_from(name: String) -> Result<Self> {
+    fn try_from(name: String) -> Result<Self, ParseNameError> {
         name.parse()
     }
 }
+
+/// The error of a name that is not one of a value's names ([`Format`], [`Safe`], [`Preset`]):
+/// the key, what it accepts and what it got.
+///
+/// [`Preset`]: crate::Preset
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParseNameError {
+    key: &'static str,
+    expected: String,
+    got: String,
+}
+
+impl ParseNameError {
+    /// The error for `got` given as `key`, which accepts `expected`.
+    pub(crate) fn new(key: &'static str, expected: impl Into<String>, got: &str) -> Self {
+        Self {
+            key,
+            expected: expected.into(),
+            got: got.to_string(),
+        }
+    }
+}
+
+impl fmt::Display for ParseNameError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}: expected {}, got \"{}\"",
+            self.key, self.expected, self.got
+        )
+    }
+}
+
+impl std::error::Error for ParseNameError {}
 
 #[cfg(test)]
 mod tests {
@@ -133,7 +173,10 @@ mod tests {
         assert_eq!("Wide".parse::<Format>().unwrap(), Format::Wide);
         assert!("4:3".parse::<Format>().is_err());
         assert_eq!("phone".parse::<Safe>().unwrap(), Safe::Phone);
-        assert!("tv".parse::<Safe>().is_err());
+        assert_eq!(
+            "tv".parse::<Safe>().unwrap_err().to_string(),
+            "safe: expected none or phone, got \"tv\""
+        );
     }
 
     #[test]

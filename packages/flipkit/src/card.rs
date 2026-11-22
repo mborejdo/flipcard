@@ -15,7 +15,7 @@ use crate::script::{self, Scene};
 use crate::{Format, Frame, Options, Overflow};
 
 /// The card layout, `word()` first.
-const CARD: &str = concat!(include_str!("typ/motion.typ"), include_str!("film.typ"));
+const CARD: &str = concat!(include_str!("typ/motion.typ"), include_str!("typ/film.typ"));
 /// Pixels per logical point: the card is drawn at twice its size for crisp text.
 const SCALE: f32 = 2.0;
 /// Seconds a flip scene stays unless `hold` says otherwise.
@@ -171,7 +171,7 @@ impl<'a> Maker<'a> {
             .as_ref()
             .map(|path| {
                 std::fs::read(path)
-                    .with_context(|| format!("logo {}: missing image", path.display()))
+                    .with_context(|| format!("logo: {}: missing image", path.display()))
             })
             .transpose()?;
         Ok(Self {

@@ -48,8 +48,8 @@ pub struct Writer {
 }
 
 impl std::fmt::Debug for Writer {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        out.debug_struct("Writer")
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Writer")
             .field("size", &self.size)
             .finish_non_exhaustive()
     }
@@ -65,13 +65,13 @@ impl Writer {
             bail!("video needs even dimensions, got {width}x{height}");
         }
         let (w, h) = (width as usize, height as usize);
-        let mut cfg = EncoderConfig::new(w, h);
-        cfg.framerate = f32::from(fps);
-        cfg.level_idc = level(w, h, fps);
-        cfg.qp = 23;
-        cfg.bframes = 0;
-        cfg.lookahead = 0;
-        let enc = Encoder::new(cfg).map_err(|e| anyhow::anyhow!("h264 encoder: {e:?}"))?;
+        let mut config = EncoderConfig::new(w, h);
+        config.framerate = f32::from(fps);
+        config.level_idc = level(w, h, fps);
+        config.qp = 23;
+        config.bframes = 0;
+        config.lookahead = 0;
+        let enc = Encoder::new(config).map_err(|e| anyhow::anyhow!("h264 encoder: {e:?}"))?;
         let config = mp4::Mp4Config {
             major_brand: "isom".parse().context("brand")?,
             minor_version: 512,

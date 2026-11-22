@@ -230,21 +230,38 @@ impl Transition {
 }
 
 impl std::str::FromStr for Transition {
-    type Err = anyhow::Error;
+    type Err = ParseNameError;
 
-    fn from_str(name: &str) -> Result<Self> {
+    fn from_str(name: &str) -> Result<Self, ParseNameError> {
         Self::ALL
             .into_iter()
             .find(|t| t.name().eq_ignore_ascii_case(name.trim()))
-            .ok_or_else(|| {
-                let names: Vec<_> = Self::ALL.iter().map(|t| t.name()).collect();
-                anyhow::anyhow!(
-                    "transition: expected one of {}, got \"{name}\"",
-                    names.join(", ")
-                )
+            .ok_or_else(|| ParseNameError {
+                got: name.to_string(),
             })
     }
 }
+
+/// The error of a name that is not one of the [`Transition`] names: what it got.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParseNameError {
+    got: String,
+}
+
+impl std::fmt::Display for ParseNameError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let names = Transition::ALL.map(Transition::name);
+        let (last, rest) = names.split_last().unwrap_or((&"", &[]));
+        write!(
+            f,
+            "transition: expected one of {} or {last}, got \"{}\"",
+            rest.join(", "),
+            self.got
+        )
+    }
+}
+
+impl std::error::Error for ParseNameError {}
 
 impl std::fmt::Display for Transition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -400,9 +417,9 @@ mod tests {
         assert_eq!(mosaic.pixel(2, 0), [0; 3]);
         assert_eq!(" Push ".parse::<Transition>().unwrap(), Transition::Push);
         let error = "slide".parse::<Transition>().unwrap_err().to_string();
-        assert!(
-            error.contains("fade, wipe") && error.contains("slide"),
-            "{error}"
+        assert_eq!(
+            error,
+            "transition: expected one of fade, wipe, push, pixelize, circle, split or cut, got \"slide\""
         );
     }
 

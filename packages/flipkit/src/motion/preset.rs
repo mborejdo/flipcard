@@ -2,10 +2,10 @@
 
 use std::str::FromStr;
 
-use anyhow::{Result, bail};
 use serde::Deserialize;
 
 use super::{Curve, Look};
+use crate::format::ParseNameError;
 
 /// How the words of a scene come in.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
@@ -129,27 +129,25 @@ impl Preset {
 }
 
 impl FromStr for Preset {
-    type Err = anyhow::Error;
+    type Err = ParseNameError;
 
-    fn from_str(name: &str) -> Result<Self> {
-        let Some(preset) = Self::ALL
+    fn from_str(name: &str) -> Result<Self, ParseNameError> {
+        Self::ALL
             .into_iter()
             .find(|p| p.name().eq_ignore_ascii_case(name.trim()))
-        else {
-            let names: Vec<_> = Self::ALL.iter().map(|p| p.name()).collect();
-            bail!(
-                "preset: expected one of {}, got \"{name}\"",
-                names.join(", ")
-            );
-        };
-        Ok(preset)
+            .ok_or_else(|| {
+                let names: Vec<_> = Self::ALL.iter().map(|p| p.name()).collect();
+                let (last, rest) = names.split_last().unwrap_or((&"", &[]));
+                let expected = format!("one of {} or {last}", rest.join(", "));
+                ParseNameError::new("preset", expected, name)
+            })
     }
 }
 
 impl TryFrom<String> for Preset {
-    type Error = anyhow::Error;
+    type Error = ParseNameError;
 
-    fn try_from(name: String) -> Result<Self> {
+    fn try_from(name: String) -> Result<Self, ParseNameError> {
         name.parse()
     }
 }
@@ -170,12 +168,10 @@ mod tests {
         assert_eq!(Preset::Type.look(0.39, 4).chars, 0.25);
         assert_eq!(Preset::Type.look(0.9, 4).chars, 1.0);
         assert_eq!(Preset::Karaoke.look(0.5, 4).s, 1.04);
-        assert!(
-            "bounce"
-                .parse::<Preset>()
-                .unwrap_err()
-                .to_string()
-                .contains("rise")
+        assert_eq!(
+            "bounce".parse::<Preset>().unwrap_err().to_string(),
+            "preset: expected one of flip, rise, slide, fade, pop, still, type, karaoke, move or \
+             stack, got \"bounce\""
         );
     }
 }

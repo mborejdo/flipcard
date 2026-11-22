@@ -2,6 +2,21 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow semver.
 
+## Unreleased
+
+### Changed
+
+- `flipcard lint` tags each line with its level, `slide 3 (Title): error: the card overflows
+  onto 2 pages; trim it` and `slide 3 (Title): warning: 31 words on one tall screen, ...`, and
+  ends with `N errors, N warnings` instead of `N of M cards overflow`. Exit codes stay.
+- Messages: `frontmatter: fps: ...` and `logo: <path>: missing image` (a colon after the
+  location); an unknown preset or transition reads `expected one of a, b or c, got "x"`; a folder
+  that can't be created names it (`create <dir>: ...`).
+- `--help` writes defaults as clap does: `[default: 10, 30 for tall and square]`.
+- flipkit: `Format`, `Safe` and `Preset` parse to `flipkit::ParseNameError` and `Transition` to
+  `filmstrip::ParseNameError` (were `anyhow::Error`); both implement `std::error::Error`.
+- flipkit: the card layout moved to `src/typ/film.typ`, next to `motion.typ`. Pixels unchanged.
+
 ## 0.3.0 - 2026-11-21
 
 ### Added
