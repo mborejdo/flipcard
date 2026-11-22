@@ -5,7 +5,7 @@ resolver = "3"
 members = ["apps/flipcard", "packages/filmstrip", "packages/flipkit"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.92"
 authors = ["Michael Borejdo <mborejdo@gmail.com>"]

@@ -726,7 +726,7 @@ dependencies = [
 
 [[package]]
 name = "filmstrip"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -765,7 +765,7 @@ dependencies = [
 
 [[package]]
 name = "flipcard"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -774,7 +774,7 @@ dependencies = [
 
 [[package]]
 name = "flipkit"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "colonmark",
