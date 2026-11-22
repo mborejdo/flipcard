@@ -1,7 +1,7 @@
 //! A tall frame on a square canvas: the film as a full-height panel in the middle, the bars to
 //! its left and right a blurred, toned-down copy of the frame, lit by a soft glow from the panel
-//! and darkened towards the corners. [`Square::grain`] adds fine grain to the bars, moved for
-//! every frame index.
+//! and darkened towards the corners. [`Square::grain`] adds fine grain to the bars, moved every
+//! few frames.
 
 use crate::Frame;
 
@@ -16,10 +16,12 @@ const HIGH: f32 = 0.60;
 const GLOW: f32 = 0.40;
 /// How fast the glow fades away from the panel: its square distance in px at 1080 px over this.
 const SPREAD: f32 = 30_000.0;
-/// How much darker the corners are than the centre.
-const VIGNETTE: f32 = 0.38;
 /// The grain: up to this much lighter or darker, in steps of 1/255.
-const GRAIN: u32 = 10;
+const GRAIN: u32 = 6;
+/// The grain moves every this many frames.
+const HOLD: u64 = 4;
+/// The grain is full from this green value up, weaker below it.
+const LIT: i16 = 64;
 
 /// The square-pad compositor for tall frames of one size.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -92,15 +94,20 @@ impl Square {
         }
         let half = size as f32 / 2.0;
         let panel = (right - left) as f32 / 2.0;
-        let spread = SPREAD * (size as f32 / 1080.0).powi(2);
+        let scale = size as f32 / 1080.0;
+        let spread = SPREAD * scale * scale;
         for y in 0..size {
             let dy = (y as f32 + 0.5 - half) / half;
             for x in (0..left).chain(right..size) {
                 let dx = (x as f32 + 0.5 - half) / half;
                 // light from the panel: strongest next to it, the same all the way down
                 let off = dx.abs().mul_add(half, -panel).max(0.0);
-                let glow = GLOW * (-off * off / spread).exp();
-                let dark = VIGNETTE.mul_add(-dx.mul_add(dx, dy * dy) / 2.0, 1.0);
+                // libm: the same bits on every platform, so the films are too
+                let glow = GLOW * libm::expf(-off * off / spread);
+                // the vignette, (1 - r^2)^1.5 with r = 1 in the corners: dark slate towards the
+                // edges, black in the corners
+                let open = 1.0 - dx.mul_add(dx, dy * dy) / 2.0;
+                let dark = open * open.sqrt();
                 let blurred = bilinear(
                     &small,
                     n,
@@ -122,21 +129,25 @@ impl Square {
         }
     }
 
-    /// Add grain to the bars of a `frame` this compositor made: monochrome, the same for the
-    /// same `index`, moved for the next. The grain is one fixed pattern, shifted by up to 3 px
-    /// every frame and repeating after 16: it reads as live grain, and an H.264 encoder follows
-    /// the shift where fresh noise in every frame would double its work.
+    /// Add grain to the bars of a `frame` this compositor made: monochrome, weaker in the dark,
+    /// the same for the same `index`. The grain is one fixed pattern, shifted by up to 3 px
+    /// every 4th frame and repeating after 16 shifts: it reads as live grain, and an H.264
+    /// encoder follows the shift where fresh noise in every frame would double its work and
+    /// the file.
     pub fn grain(&self, frame: &mut Frame, index: u64) {
         let size = self.size();
         let (left, right) = self.span();
         // 0, 5, 10, 15, 4, ...: every step lands on another of the 16 shifts
-        let shift = (index % 16 * 5 % 16) as u32;
+        let shift = (index / HOLD % 16 * 5 % 16) as u32;
         let (sx, sy) = (shift % 4, shift / 4);
         for y in 0..size {
             for x in (0..left).chain(right..size) {
                 let cell = (y + sy) * (size + 4) + x + sx;
                 let noise = (mix(cell) % (2 * GRAIN + 1)) as i16 - GRAIN as i16;
                 let at = ((y * size + x) * 3) as usize;
+                // full grain from mid grey down, less in the dark, as on film
+                let light = i16::from(frame.rgb[at + 1]).min(LIT);
+                let noise = noise * light / LIT;
                 for v in &mut frame.rgb[at..at + 3] {
                     *v = (i16::from(*v) + noise).clamp(0, 255) as u8;
                 }
@@ -277,19 +288,24 @@ mod tests {
         let black = Frame::drawn(108, 192, |_, _| [0; 3]);
         let white = Frame::drawn(108, 192, |_, _| [255; 3]);
         let pad = Square::new(108, 192, [0; 3], [0; 3]);
-        // at the left edge, mid height: the vignette a fifth down, the last of the glow a tenth
-        let low = f32::from(pad.frame(&black).pixel(0, 54)[0]);
-        let high = f32::from(pad.frame(&white).pixel(0, 54)[0]);
-        assert!(low / 255.0 <= LOW && low / 255.0 > LOW * 0.7, "{low}");
-        assert!(high / 255.0 < HIGH && high / 255.0 > HIGH * 0.7, "{high}");
+        // a glow to black and the vignette scale black and white alike: what is left of them
+        // is the curve, 0 to LOW and 1 to HIGH
+        let low = f32::from(pad.frame(&black).pixel(20, 54)[0]);
+        let high = f32::from(pad.frame(&white).pixel(20, 54)[0]);
+        assert!(low > 0.0 && low < LOW * 255.0, "{low}");
+        assert!((high / low - HIGH / LOW).abs() < 0.5, "{high} / {low}");
         // next to the panel the glow pulls towards its colour
         let lit = Square::new(108, 192, [0; 3], [0, 0, 255]).frame(&black);
         assert!(lit.pixel(20, 54)[2] > lit.pixel(20, 54)[0] + 60);
         let blue = |x: u32, y: u32| i16::from(lit.pixel(x, y)[2]) - i16::from(lit.pixel(x, y)[0]);
         assert!(blue(20, 54) > blue(10, 54) && blue(10, 54) > blue(0, 54));
+        // the glow is the same all the way down: blue over red, which the vignette keeps
+        let tint = |y: u32| f32::from(lit.pixel(20, y)[2]) / f32::from(lit.pixel(20, y)[0]);
         assert!(
-            blue(20, 2) * 4 > blue(20, 54) * 3,
-            "the glow runs all the way down, only the vignette darkens it"
+            (tint(8) / tint(54) - 1.0).abs() < 0.2,
+            "{} {}",
+            tint(8),
+            tint(54)
         );
         // the corners are darker than the edge midpoints
         assert!(pad.frame(&white).pixel(0, 0)[0] < pad.frame(&white).pixel(0, 54)[0]);
@@ -297,8 +313,8 @@ mod tests {
 
     #[test]
     fn the_grain_is_the_same_for_one_index_and_another_for_the_next() {
-        let pad = Square::new(108, 192, [0; 3], [0; 3]);
-        let base = pad.frame(&tall());
+        let pad = Square::new(108, 192, [0; 3], [255; 3]);
+        let base = pad.frame(&Frame::drawn(108, 192, |_, _| [255; 3]));
         let grained = |index| {
             let mut frame = base.clone();
             pad.grain(&mut frame, index);
@@ -306,6 +322,7 @@ mod tests {
         };
         assert_eq!(grained(7), grained(7));
         assert_ne!(grained(7), grained(8));
+        assert_eq!(grained(4), grained(7), "the grain holds for {HOLD} frames");
         let one = grained(7);
         // only the bars, and within the amplitude
         assert_eq!(one.pixel(40, 40), base.pixel(40, 40));

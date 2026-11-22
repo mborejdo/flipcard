@@ -27,6 +27,7 @@ serde = ["dep:serde"]
 
 [dependencies]
 anyhow.workspace = true
+libm.workspace = true
 png.workspace = true
 serde = { workspace = true, optional = true }
 gif = { workspace = true, optional = true }

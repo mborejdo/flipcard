@@ -732,6 +732,7 @@ dependencies = [
  "bytes",
  "color_quant",
  "gif 0.13.3",
+ "libm",
  "mp4",
  "png 0.17.16",
  "rusty_h264-common",
