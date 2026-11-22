@@ -62,7 +62,8 @@ the beat after the one before has landed; inside a block a word follows the last
 `type` and `karaoke` give each word its letters at `pace` (5.5 letters a word), half a beat more
 after `, ; :` and a beat after `. ! ?`. `//` between words waits one more beat and is not shown. A
 scene then holds for its words read at `pace` (after `type`, `karaoke` and `stack`: they were read
-coming in), at least four beats; `hold` is the floor when set. `enter` is for `flip` only.
+coming in), at least four beats after its last mark, count or bar has finished; `hold` is the
+floor when set. `enter` is for `flip` only.
 
 `move` and `stack` lay the card out once more to find where the words are. `move` matches words
 by their text, each to the first unused one of the scene before; the glide takes a beat and a
@@ -81,7 +82,9 @@ alike in a row draw as one sweep:
   landed. A tall or square heading without one gets a bar under it instead, drawn as a laser: a
   soft glow and a white-hot tip that fades once it is across.
 - `:::{metrics}`: the values rise and count up over three beats, in their own format (`1 200`,
-  `60 %`, `3.5x`), the digits tabular so nothing jumps.
+  `60 %`, `3.5x`), the digits tabular so nothing jumps. Each value's bar draws up from the bottom
+  over two beats as it starts to count and moves with it; on a tall or square card as a laser,
+  like the heading's bar.
 - Every word sits where it ends up: the card is laid out once at rest and the words move, scale
   and fade inside their boxes. A scene's last frame is its still.
 

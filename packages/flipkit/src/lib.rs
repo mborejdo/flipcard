@@ -785,7 +785,7 @@ one two three four five six seven eight nine ten
                 .iter()
                 .all(|w| w == &Value::Object(serde_json::Map::new()));
             assert!(
-                at_rest && last.get("bar").is_none(),
+                at_rest && last.get("bar").is_none() && last.get("m").is_none(),
                 "scene {scene} ends at rest"
             );
             for (frame, state) in card.states.iter().enumerate() {

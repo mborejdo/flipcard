@@ -21,6 +21,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
   tip and a short streak, the tip fading once it is across.
 - Tall and square cards: body lines and list items 1.33 apart (were about 1.28 and 1.18); the
   bar sits midway between the heading and the text.
+- `:::{metrics}` in motion: each value's bar draws up from the bottom over two beats as the value
+  starts to count and moves with it (rise, stack); on a tall or square card as a laser, like the
+  heading's bar. Wide `flip` films keep their static bars.
 - `flipcard lint` tags each line with its level, `slide 3 (Title): error: the card overflows
   onto 2 pages; trim it` and `slide 3 (Title): warning: 31 words on one phone screen, ...`, and
   ends with `N errors, N warnings` instead of `N of M cards overflow`. Exit codes stay.
@@ -37,6 +40,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ### Fixed
 
+- Motion: a metric's bar no longer shows at its resting place from the scene's first frame, cutting
+  through the heading and the transition while the stacked lines were still held low.
 - Square films take the phone look: big centred words that come in by a preset (`rise` by
   default), the bar under the heading, page-on, and the lint's word count.
 - A run of bold words only tints; a lone bold word still pulses. Pulsing together, the words

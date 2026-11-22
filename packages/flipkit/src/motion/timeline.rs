@@ -3,7 +3,8 @@
 //! the preset's stagger; `type` and `karaoke` take each word its letters at the pace, half a beat
 //! more after `, ; :` and a beat after `. ! ?`. `//` waits a beat. A marked word draws its mark
 //! (tints and pulses when bold) once it has landed, a run of words marked alike as one sweep from
-//! the left; the heading's marker (or bar) draws once the heading has.
+//! the left; the heading's marker (or bar) draws once the heading has, a metric's bar as its value
+//! starts to count. Every scene rests after its last animation (see [`Timeline::length`]).
 //!
 //! The kinetic presets know where the words are ([`Timeline::arrange`]): `move` glides the words
 //! the card before has too from there first, then the others come in; `stack` brings line after
@@ -25,6 +26,12 @@ const SETTLE: f64 = 0.5;
 const BAR: f64 = 4.0;
 /// Half-beats the bar's hot tip takes to fade.
 const FLASH: f64 = 2.0;
+/// Half-beats a laser (the heading's bar, a metric's) is busy: drawing, then its tip fading.
+const LASER: f64 = if BAR > BAR / 2.0 + FLASH {
+    BAR
+} else {
+    BAR / 2.0 + FLASH
+};
 /// Half-beats a word of the card before glides to its place.
 const GLIDE: f64 = 3.0;
 /// Half-beats a metric counts up.
@@ -242,6 +249,10 @@ impl Timeline {
             starts[i] = Some((t, len));
             landed = landed.max(t + len);
             end = end.max(t + len);
+            // a metric's bar draws as its value starts to count
+            if cue.value.is_some() {
+                end = end.max(t + LASER);
+            }
             // the heading's marker (or bar) draws once the heading has landed; a stacked
             // heading's moves up with the words
             if cue.block == 0 && self.marked {
@@ -260,7 +271,7 @@ impl Timeline {
         }
         self.starts = starts;
         self.sweeps = sweeps;
-        self.end = mark.map_or(end, |m| end.max(m + BAR.max(BAR.mul_add(0.5, FLASH))));
+        self.end = mark.map_or(end, |m| end.max(m + LASER));
         self.mark = mark;
     }
 
@@ -314,7 +325,8 @@ impl Timeline {
     }
 
     /// Seconds the scene stays: the entrances, then its new words read at the pace (`type`,
-    /// `karaoke` and `stack` read them coming in), at least four beats.
+    /// `karaoke` and `stack` read them coming in), at least four beats. The entrances end with the
+    /// last animation (a mark, a count, a laser), so the finished card always rests that long.
     pub(crate) fn length(&self) -> f64 {
         let words = self.cues.iter().filter(|c| c.step == self.step).count() as f64;
         let read = if self.pace > 0.0 && !self.preset.read_in() {
@@ -341,7 +353,7 @@ impl Timeline {
                 (bottom - above) * (1.0 - Curve::Ease.at(p(start, ENTER)))
             })
             .sum();
-        let mut values = Vec::new();
+        let (mut values, mut bars) = (Vec::new(), Vec::new());
         let looks: Vec<_> = self
             .cues
             .iter()
@@ -352,6 +364,13 @@ impl Timeline {
                 let mut look = match (&cue.value, cue.from) {
                     (Some(value), _) => {
                         values.push(count(value, Curve::Ease.at(p(at, COUNT))));
+                        // its bar grows from the bottom as it starts to count; the bar moves
+                        // with the value (film.typ reads its `y`)
+                        bars.push(laser(
+                            Curve::Ease.at(p(at, BAR)),
+                            1.0 - Curve::Ease.at(p(at.map(|a| BAR.mul_add(0.5, a)), FLASH)),
+                            0.0,
+                        ));
                         Preset::Rise.look(p(at, ENTER), 1)
                     },
                     (None, Some(from)) => from.toward(Curve::Ease.at(p(at, len))),
@@ -396,16 +415,14 @@ impl Timeline {
             })
             .collect();
         let mut state = json!({ "w": looks, "n": values });
+        // the metrics' bars, while one still draws
+        if bars.iter().any(|b| !b.is_empty()) {
+            state["m"] = bars.into();
+        }
         // the heading's bar: how far it is drawn, how hot its tip is (fading from halfway)
         // and how far down the stacked lines still hold it, in points
         let hot = 1.0 - Curve::Ease.at(p(self.mark.map(|m| BAR.mul_add(0.5, m)), FLASH));
-        let bar: serde_json::Map<_, _> =
-            [("draw", draw, 1.0), ("hot", hot, 0.0), ("dy", sink, 0.0)]
-                .into_iter()
-                .map(|(k, v, rest)| (k, (v * 1e4).round() / 1e4, rest))
-                .filter(|&(_, v, rest)| (v - rest).abs() > 5e-5)
-                .map(|(k, v, _)| (k.to_string(), v.into()))
-                .collect();
+        let bar = laser(draw, hot, sink);
         if self.marked && !bar.is_empty() {
             state["bar"] = bar.into();
         }
@@ -419,6 +436,17 @@ impl Timeline {
         }
         state.to_string()
     }
+}
+
+/// A laser's look as JSON: how far it is drawn, how hot its tip is and how far down it is held,
+/// in points; values rounded to 1e-4, a field at rest left out.
+fn laser(draw: f64, hot: f64, dy: f64) -> serde_json::Map<String, serde_json::Value> {
+    [("draw", draw, 1.0), ("hot", hot, 0.0), ("dy", dy, 0.0)]
+        .into_iter()
+        .map(|(k, v, rest)| (k, (v * 1e4).round() / 1e4, rest))
+        .filter(|&(_, v, rest)| (v - rest).abs() > 5e-5)
+        .map(|(k, v, _)| (k.to_string(), v.into()))
+        .collect()
 }
 
 #[cfg(test)]
@@ -512,6 +540,65 @@ mod tests {
         assert_eq!(timeline.end, 6.0);
         assert!(timeline.state(0.0).contains(r#""n":["0"]"#));
         assert!(timeline.state(1.2).contains(r#""n":["1 200"]"#));
+    }
+
+    #[test]
+    fn a_metrics_bar_is_hidden_till_its_value_comes_in_then_draws_as_a_laser() {
+        // a heading word, then the metric on the beat after it has landed: half-beat 2
+        let mut cues = words(&[0]);
+        cues.push(Cue {
+            block: 1,
+            value: Some("47".into()),
+            ..Cue::default()
+        });
+        let timeline = rise(cues);
+        assert_eq!(starts(&timeline), [Some(0.0), Some(2.0)]);
+        let bar = |t: f64| -> serde_json::Value {
+            let state: serde_json::Value = serde_json::from_str(&timeline.state(t)).unwrap();
+            state
+                .get("m")
+                .map_or_else(|| serde_json::json!({}), |m| m[0].clone())
+        };
+        // before its value: not drawn, the tip not lit yet
+        assert_eq!(bar(0.0), serde_json::json!({ "draw": 0.0, "hot": 1.0 }));
+        assert_eq!(bar(0.39)["draw"], 0.0);
+        // drawing from the bottom as the value counts, hot while it draws
+        let half = bar(0.6);
+        let draw = half["draw"].as_f64().unwrap();
+        assert!(draw > 0.5 && draw < 1.0, "{half}");
+        assert_eq!(half["hot"], 1.0);
+        // drawn over two beats, the tip cooled by then: at rest, and gone from the state
+        assert_eq!(bar(0.4 + 0.8), serde_json::json!({}));
+        assert!(!timeline.state(1.2).contains(r#""m":"#));
+        // the value counts on to half-beat 8, after its bar
+        assert_eq!(timeline.end, 2.0 + COUNT);
+    }
+
+    #[test]
+    fn every_scene_rests_after_its_last_animation() {
+        // each preset, a marked heading, marks and a metric: once nothing moves any more the
+        // card rests at least four beats before the scene ends
+        for preset in Preset::ALL {
+            let mut cues = words(&[0, 0, 1, 1, 2]);
+            cues[2].word.run.highlight = true;
+            cues[3].word.run.bold = true;
+            cues[4].value = Some("60 %".into());
+            for (i, cue) in cues.iter_mut().enumerate() {
+                cue.word.id = i;
+            }
+            let timeline = Timeline::new(preset, 0.4, 200.0, 0, cues, true);
+            let fps = 100.0;
+            let frames = (timeline.length() * fps) as usize;
+            let last = (0..frames)
+                .map(|k| k as f64 / fps)
+                .collect::<Vec<_>>()
+                .windows(2)
+                .filter(|w| timeline.state(w[0]) != timeline.state(w[1]))
+                .map(|w| w[1])
+                .fold(0.0, f64::max);
+            assert!(last <= timeline.entrances() + 1e-9, "{preset:?}");
+            assert!(timeline.length() - last >= 1.6 - 1e-9, "{preset:?}");
+        }
     }
 
     #[test]

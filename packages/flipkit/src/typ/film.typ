@@ -118,6 +118,26 @@
   calc.max(n, 1)
 }
 
+// a laser `x` long, `t` thick, from the left (or `up` from the bottom): a soft accent glow round the
+// line, and while it draws (`hot` 1, fading to 0 once it has) a white-hot tip with a short streak
+// behind it; the phone heading's bar and, moving, a metric's (`glow` false: the line alone)
+#let laser(x, t, hot, up: false, glow: true) = {
+  if x <= 0pt { return }
+  // `d` along the line from where it starts
+  let at(d, body) = if up { place(bottom + center, move(dy: -d, body)) } else { place(left + horizon, move(dx: d, body)) }
+  let run(length, paint, k) = line(length: length, angle: if up { -90deg } else { 0deg }, stroke: (paint: paint, thickness: k * t, cap: "round"))
+  if glow { for (k, clear) in ((5, 94%), (2.5, 85%)) { at(0pt, run(x, accent.transparentize(clear), k)) } }
+  at(0pt, run(x, accent, 1))
+  if hot > 0 {
+    let streak = calc.min(x, 16 * t)
+    let core = white.transparentize((1 - hot) * 100%)
+    at(x - streak, run(streak, gradient.linear(accent.transparentize(100%), core, dir: if up { btt } else { ltr }), 1))
+    // the tip swells a little as it cools
+    let r = (3 + 1.5 * (1 - hot)) * t
+    at(x - r, circle(radius: r, fill: gradient.radial(core, accent.transparentize(100% - 50% * hot), accent.transparentize(100%))))
+  }
+}
+
 // ---- the blocks ----
 #let marker(level, number) = if number != none { small(str(number) + ".", fill: accent, size: 7) } else {
   box(baseline: -0.2em, circle(radius: sz(1.7 - 0.35 * calc.min(level, 2)), fill: if level == 0 { accent } else { muted }))
@@ -159,18 +179,34 @@
         // tall: one metric per row, the numbers are big; square and wide side by side
         ..if H > W { (columns: (auto,), row-gutter: sz(10)) } else { (columns: b.items.map(it => auto)) },
         column-gutter: sz(10),
-        ..b.items.enumerate().map(((i, m)) => block(inset: (left: 0.5em, y: 0.1em), stroke: (left: (1.6 * s * px + accent)), {
-          set par(leading: 0.7em)
-          if moving {
-            let v = m.value
-            let counted = motion.at("n", default: ()).at(v.count, default: v.text)
-            display-text(size: sz(17, t: 64), fill: ink, number-width: "tabular", word(v, counted, final: v.text))
-          } else {
-            display-text(size: sz(17, t: 64), fill: ink, counted(m.value))
+        ..b.items.enumerate().map(((i, m)) => {
+          let body = {
+            set par(leading: 0.7em)
+            if moving {
+              let v = m.value
+              let counted = motion.at("n", default: ()).at(v.count, default: v.text)
+              display-text(size: sz(17, t: 64), fill: ink, number-width: "tabular", word(v, counted, final: v.text))
+            } else {
+              display-text(size: sz(17, t: 64), fill: ink, counted(m.value))
+            }
+            linebreak()
+            at-step(0, slot + i, fresh, small(if moving { spans(m.label) } else { m.label }, t: 18))
           }
-          linebreak()
-          at-step(0, slot + i, fresh, small(if moving { spans(m.label) } else { m.label }, t: 18))
-        })),
+          let thick = 1.6 * s * px
+          if not moving { block(inset: (left: 0.5em, y: 0.1em), stroke: (left: thick + accent), body) } else {
+            // moving: the bar is the value's, drawn up from the bottom as it starts to count and
+            // moving with it (risen, held low by a stack); a laser on a phone card, as its heading's
+            let v = m.value
+            let bar = motion.at("m", default: ()).at(v.count, default: (:))
+            let y = motion.at("w", default: ()).at(v.id, default: (:)).at("y", default: 0)
+            block(inset: (left: 0.5em, y: 0.1em), layout(size => {
+              let h = measure(body, width: size.width).height + 0.2em.to-absolute()
+              let dy = y * sz(17, t: 64)
+              place(top + left, dx: -0.5em, dy: dy - 0.1em, box(width: 0pt, height: h, laser(h * bar.at("draw", default: 1), thick, if phone { bar.at("hot", default: 0) } else { 0 }, up: true, glow: phone)))
+              body
+            }))
+          }
+        }),
       ))
       if step == 0 { slot += b.items.len() }
     } else if b.kind == "image" {
@@ -198,23 +234,6 @@
 // from the left once the words have landed
 // a follow-on page's heading stays where the slide's first page has it: `lift` points down
 #let lift = card.at("lift", default: 0)
-// the phone heading's bar as a laser `x` long, `t` thick: a soft accent glow round the line, and
-// while it draws (`hot` 1, fading to 0 once it has) a white-hot tip with a short streak behind it
-#let laser(x, t, hot) = {
-  if x <= 0pt { return }
-  let at(body) = place(left + horizon, body)
-  let stroke(paint, k) = (paint: paint, thickness: k * t, cap: "round")
-  for (k, clear) in ((5, 94%), (2.5, 85%)) { at(line(length: x, stroke: stroke(accent.transparentize(clear), k))) }
-  at(line(length: x, stroke: stroke(accent, 1)))
-  if hot > 0 {
-    let streak = calc.min(x, 16 * t)
-    let core = white.transparentize((1 - hot) * 100%)
-    at(move(dx: x - streak, line(length: streak, stroke: stroke(gradient.linear(accent.transparentize(100%), core), 1))))
-    // the tip swells a little as it cools
-    let r = (3 + 1.5 * (1 - hot)) * t
-    at(move(dx: x - r, circle(radius: r, fill: gradient.radial(core, accent.transparentize(100% - 50% * hot), accent.transparentize(100%)))))
-  }
-}
 #let lifted(body) = if lift == 0 { body } else { move(dy: lift * px, body) }
 #let heading-block = if card.title == none { none } else if moving {
   let body = heading-text(spans(card.title, heading: true), if card.first { 19 } else { 13 })

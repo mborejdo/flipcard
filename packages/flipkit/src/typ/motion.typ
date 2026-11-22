@@ -1,8 +1,9 @@
 // Motion, ahead of film.typ: one word at one instant. sys.inputs.state (JSON) holds a look per
 // word id (o opacity, x and y offset in em, s scale, draw how far its mark is drawn, chars how
 // much is typed, fill how far ink has filled it from muted, tint toward its mark's colour; a
-// missing field is at rest), the counted metric values (n), the word the caret follows (c) and
-// the tall heading's bar (bar: draw, hot, dy in points; film.typ draws it).
+// missing field is at rest), the counted metric values (n), their bars while one draws (m: draw,
+// hot, by value), the word the caret follows (c) and the tall heading's bar (bar: draw, hot, dy
+// in points); film.typ draws the bars.
 // The word's box has its final size; the look moves, scales and fades the glyphs inside it, so
 // nothing reflows. Every word leaves `metadata("id width height size") <word>` (points) at its
 // box's top left: where the words are, for the kinetic presets.
