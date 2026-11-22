@@ -49,10 +49,16 @@ impl std::fmt::Debug for Picture {
 impl Picture {
     /// The picture of `frame`; its dimensions even.
     pub fn new(frame: &Frame) -> Result<Self> {
-        if !frame.is_consistent()
-            || !frame.width.is_multiple_of(2)
-            || !frame.height.is_multiple_of(2)
-        {
+        if !frame.is_consistent() {
+            bail!(
+                "frame of {}x{} has {} bytes of RGB, not {}",
+                frame.width,
+                frame.height,
+                frame.rgb.len(),
+                frame.width as usize * frame.height as usize * 3
+            );
+        }
+        if !frame.width.is_multiple_of(2) || !frame.height.is_multiple_of(2) {
             bail!(
                 "video needs even dimensions, got {}x{}",
                 frame.width,

@@ -252,7 +252,7 @@ impl<'a> Maker<'a> {
                 if spill == 1 {
                     break;
                 }
-                let split = if self.options.format.phone() {
+                let split = if self.options.format.is_phone() {
                     self.split(engine, &page)?
                 } else {
                     None
@@ -390,7 +390,7 @@ fn timeline(
         cue.step = usize::MAX; // a follow-on page's heading is already there
     }
     let heading = page.slide.heading.as_deref();
-    let marked = heading.is_some_and(|h| o.format.phone() || h.iter().any(|s| s.highlight));
+    let marked = heading.is_some_and(|h| o.format.is_phone() || h.iter().any(|s| s.highlight));
     let wpm = scene.pace.unwrap_or_else(|| f64::from(o.pace));
     let beat = scene.beat.unwrap_or(BEAT);
     Timeline::new(preset, beat, wpm, step, cues, marked)

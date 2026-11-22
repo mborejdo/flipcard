@@ -41,7 +41,7 @@ Exit codes:
 const LINT_FOOTER: &str = "\
 Examples:
   flipcard lint talk/slides.md       an error line per card that overflows, a warning line per
-                                     tall slide with more than 12 words, then N errors, N warnings
+                                     tall or square slide with more than 12 words, then N errors, N warnings
 
 Exit codes:
   0  every card fits

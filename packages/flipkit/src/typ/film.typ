@@ -15,15 +15,15 @@
 #let frames = int(sys.inputs.at("frames", default: "1"))
 #let W = float(sys.inputs.at("width", default: "320"))
 #let H = float(sys.inputs.at("height", default: W * 9 / 16))
-#let tall = H >= W // tall or square: the phone look
+#let phone = H >= W // tall or square: the phone look
 #let moving = card.at("motion", default: false)
 #let s = W / (if W > H { 320 } else { 360 }) // every size below is set for a 320 pt wide card, 360 pt tall or square
 #let (safe-top, safe-right, safe-bottom, safe-left) = sys.inputs.at("safe", default: "0 0 0 0").split(" ").map(float)
 #let px = 1pt
-// a size for the card: `n` wide, on a tall card `t` or `n` in proportion to 26 pt text
-#let sz(n, t: auto) = (if not tall { n } else if t == auto { n * 26 / 8.4 } else { t }) * s * px
-// tall: lists and code stay left in the centred card
-#let left-tall(body) = if tall { align(left, body) } else { body }
+// a size for the card: `n` wide, on a phone card `t` or `n` in proportion to 26 pt text
+#let sz(n, t: auto) = (if not phone { n } else if t == auto { n * 26 / 8.4 } else { t }) * s * px
+// phone: lists and code stay left in the centred card
+#let left-phone(body) = if phone { align(left, body) } else { body }
 
 #let ground = rgb(theme.ground)
 #let ink = rgb(theme.ink)
@@ -84,17 +84,17 @@
   xs.map(sp => if sp.underline or sp.highlight { marked(styled(sp)) } else { styled(sp) }).join()
 }
 
-// the card's margins sit inside the safe area; a tall card checked for fit (`fit`) keeps a body
+// the card's margins sit inside the safe area; a phone card checked for fit (`fit`) keeps a body
 // line clear above the footer
 #set page(width: W * px, height: H * px, margin: (
   left: safe-left * W * px + 24 * s * px,
   right: safe-right * W * px + 24 * s * px,
   top: safe-top * H * px + 16 * s * px,
-  bottom: safe-bottom * H * px + 26 * s * px + (if tall and "fit" in sys.inputs { 1.3 * sz(8.4) } else { 0pt }),
+  bottom: safe-bottom * H * px + 26 * s * px + (if phone and "fit" in sys.inputs { 1.3 * sz(8.4) } else { 0pt }),
 ), fill: ground)
 #set text(font: sans, size: sz(8.4), fill: ink, hyphenate: false, number-type: "lining")
-// tall: big phone text a little more open, about 1.33 lines apart
-#set par(leading: if tall { 0.6em } else { 0.55em }, spacing: 0.8em, justify: false)
+// phone: big text a little more open, about 1.33 lines apart
+#set par(leading: if phone { 0.6em } else { 0.55em }, spacing: 0.8em, justify: false)
 #set smartquote(enabled: false)
 #show raw: set text(font: mono, size: 0.92em)
 #show raw.where(block: false): it => box(fill: surface, inset: (x: 0.3em, y: 0.1em), radius: 2 * s * px, it)
@@ -137,9 +137,9 @@
       at-step(0, slot, fresh, block(inset: (left: 0.7em, y: 0.2em), stroke: (left: 1.6 * s * px + accent), text(fill: muted, style: "italic", b.lines.map(spans).join(linebreak()))))
       if step == 0 { slot += 1 }
     } else if b.kind == "list" {
-      left-tall(block(width: 100%, {
-        // tall: items as far apart as the lines of a paragraph
-        set par(spacing: if tall { 0.6em } else { 0.45em })
+      left-phone(block(width: 100%, {
+        // phone: items as far apart as the lines of a paragraph
+        set par(spacing: if phone { 0.6em } else { 0.45em })
         for it in b.items {
           let dot = marker(it.level, it.number)
           let dot = if moving and it.spans.len() > 0 { word(it.spans.first(), dot, dot: true) } else { dot }
@@ -152,7 +152,7 @@
         }
       }))
     } else if b.kind == "code" {
-      at-step(0, slot, fresh, left-tall(block(width: 100%, fill: surface, inset: 0.7em, radius: 3 * s * px, raw(b.lines.join("\n"), block: true, lang: if b.lang == "" { none } else { b.lang }))))
+      at-step(0, slot, fresh, left-phone(block(width: 100%, fill: surface, inset: 0.7em, radius: 3 * s * px, raw(b.lines.join("\n"), block: true, lang: if b.lang == "" { none } else { b.lang }))))
       if step == 0 { slot += 1 }
     } else if b.kind == "metrics" {
       block(above: 1em, below: 1.1em, grid(
@@ -194,11 +194,11 @@
   }
   words
 }
-// moving: a marker behind the `==` words, or on a tall card a bar under the whole heading, drawn
+// moving: a marker behind the `==` words, or on a phone card a bar under the whole heading, drawn
 // from the left once the words have landed
 // a follow-on page's heading stays where the slide's first page has it: `lift` points down
 #let lift = card.at("lift", default: 0)
-// the tall heading's bar as a laser `x` long, `t` thick: a soft accent glow round the line, and
+// the phone heading's bar as a laser `x` long, `t` thick: a soft accent glow round the line, and
 // while it draws (`hot` 1, fading to 0 once it has) a white-hot tip with a short streak behind it
 #let laser(x, t, hot) = {
   if x <= 0pt { return }
@@ -221,7 +221,7 @@
   block(width: 100%, below: 7 * s * px, lifted({
     set par(leading: 0.42em)
     body
-    if tall and not card.title.any(w => w.highlight) and card.title.len() > 0 {
+    if phone and not card.title.any(w => w.highlight) and card.title.len() > 0 {
       let bar = motion.at("bar", default: (:))
       let (draw, hot, dy) = (bar.at("draw", default: 1), bar.at("hot", default: 0), bar.at("dy", default: 0))
       block(above: 14 * s * px, layout(size => {
@@ -251,11 +251,11 @@
 #if sys.inputs.at("logo", default: none) != none {
   place(top + left, dy: -8 * s * px, image(sys.inputs.logo, height: 12 * s * px))
 }
-#if card.first or tall {
-  align(if tall { center + horizon } else { horizon }, {
+#if card.first or phone {
+  align(if phone { center + horizon } else { horizon }, {
     heading-block
-    // tall: the bar balanced between the heading and the text
-    v(if tall { 14 } else { 6 } * s * px)
+    // phone: the bar balanced between the heading and the text
+    v(if phone { 14 } else { 6 } * s * px)
     body-blocks
   })
 } else {

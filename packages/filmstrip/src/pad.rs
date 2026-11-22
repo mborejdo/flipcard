@@ -40,7 +40,15 @@ impl Square {
     /// A compositor for `width` x `height` tall frames (both even, height above width); the
     /// canvas is `width` square, the panel `width` tall.
     #[must_use]
+    ///
+    /// # Panics
+    ///
+    /// If the frames are not tall: a wide or square frame leaves no room for the panel.
     pub fn new(width: u32, height: u32, edge: [u8; 3], glow: [u8; 3]) -> Self {
+        assert!(
+            height > width,
+            "pad: square needs tall frames, got {width}x{height}"
+        );
         let panel = (width * width + height) / (2 * height.max(1)) * 2;
         Self {
             tall: (width, height),
@@ -145,7 +153,7 @@ impl Square {
                 let cell = (y + sy) * (size + 4) + x + sx;
                 let noise = (mix(cell) % (2 * GRAIN + 1)) as i16 - GRAIN as i16;
                 let at = ((y * size + x) * 3) as usize;
-                // full grain from mid grey down, less in the dark, as on film
+                // full grain from a green of LIT up, less in the dark, as on film
                 let light = i16::from(frame.rgb[at + 1]).min(LIT);
                 let noise = noise * light / LIT;
                 for v in &mut frame.rgb[at..at + 3] {
@@ -262,6 +270,12 @@ mod tests {
     fn tall() -> Frame {
         // a dark frame with a white column down its middle
         Frame::drawn(108, 192, |x, _| if x == 54 { [255; 3] } else { [0; 3] })
+    }
+
+    #[test]
+    #[should_panic(expected = "pad: square needs tall frames, got 192x108")]
+    fn a_wide_frame_has_no_room_for_the_panel() {
+        let _ = Square::new(192, 108, [1, 2, 3], [0, 0, 255]);
     }
 
     #[test]

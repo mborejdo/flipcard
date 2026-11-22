@@ -47,7 +47,7 @@ for the film, `:::{scene}` for one slide:
 | preset | the words |
 |:--|:--|
 | `flip` | the card build-in above (wide default) |
-| `rise` | word by word, up from below as they fade in (tall default) |
+| `rise` | word by word, up from below as they fade in (tall and square default) |
 | `slide` | word by word, in from the left, settling with a little spring |
 | `fade` | block by block, fading in |
 | `pop` | word by word, scaled up past their size and back |
@@ -78,18 +78,19 @@ alike in a row draw as one sweep:
 - `~~struck~~`: a line draws through it and it turns muted.
 
 - `==word==` in a heading: an accent marker draws behind it from the left once the words have
-  landed. A tall heading without one gets a bar under it instead, drawn as a laser: a soft glow
-  and a white-hot tip that fades once it is across.
+  landed. A tall or square heading without one gets a bar under it instead, drawn as a laser: a
+  soft glow and a white-hot tip that fades once it is across.
 - `:::{metrics}`: the values rise and count up over three beats, in their own format (`1 200`,
   `60 %`, `3.5x`), the digits tabular so nothing jumps.
 - Every word sits where it ends up: the card is laid out once at rest and the words move, scale
   and fade inside their boxes. A scene's last frame is its still.
 
-On a tall card the text is big and centred, one idea per screen. On the 360 pt canvas: heading 40,
-text and lists 26 (lines and items 1.33 apart), a metric 64 with its label at 18, the footer 12; metrics stack one per row. That
-holds about 12 words: `flipcard lint` warns above. A slide that doesn't fit is not shrunk: it pages
-on into a follow-on scene with the same heading, cut after a block, else after a list item or a
-paragraph line. Only when not even that fits is it an overflow.
+On a tall or square card the text is big and centred, one idea per screen. On the 360 pt canvas:
+heading 40, text and lists 26 (lines and items 1.33 apart), a metric 64 with its label at 18, the
+footer 12; on a tall card metrics stack one per row. That holds about 12 words: `flipcard lint`
+warns above. A slide that doesn't fit is not shrunk: it pages on into a follow-on scene with the
+same heading, cut after a block, else after a list item or a paragraph line. Only when not even
+that fits is it an overflow.
 
 ## Files
 
@@ -106,7 +107,7 @@ frontmatter beats file beats the format's defaults.
 | value | flag | default | what |
 |:--|:--|--:|:--|
 | format | `--format` | wide | `wide` (16:9), `tall` (9:16) or `square` (1:1) |
-| preset | `--preset` | flip | how the words come in, see Motion; `rise` for tall |
+| preset | `--preset` | flip | how the words come in, see Motion; `rise` for tall and square |
 | safe | `--safe` | none | `phone` keeps the content clear of a phone app's bars, captions and buttons |
 | pad | `--pad` | none | `square` puts a tall film on a square canvas, see below |
 | fps | `--fps` | 10 | frames per second |
@@ -121,9 +122,9 @@ frontmatter beats file beats the format's defaults.
 | gif-fps | `--gif-fps` | fps | the GIF takes every n-th frame |
 
 `tall` sets width 1080 (1080x1920), fps 30, fade 0.2, safe `phone`, preset `rise`, gif-width 360
-and gif-fps 15: the MP4 is the film for the phone, the GIF a preview. `square` is the same at 1080x1080
-without the safe area. The card's content sits inside the safe area, centred; what doesn't fit
-there is an overflow, as on a wide card.
+and gif-fps 15: the MP4 is the film for the phone, the GIF a preview. `square` is the same at
+1080x1080 without the safe area. The card's content sits inside the safe area, centred; what
+doesn't fit there is an overflow, as on a wide card.
 
 `pad: square` (tall only) makes a square film of a tall one: the tall frame scaled to the full
 height as a panel in the middle, a 2 px edge in the theme's `border` colour left and right, and
@@ -163,8 +164,8 @@ fps = 12
 
 A card that doesn't fit is never cropped: `flipcard` stops with
 `slide 4 (The chain): the card overflows onto 2 pages; trim it`, and `flipcard lint` lists every
-such card. Fix: fewer words, a smaller picture (`{h=5}`), or a second slide. A tall slide pages on
-first (see Motion).
+such card. Fix: fewer words, a smaller picture (`{h=5}`), or a second slide. A tall or square
+slide pages on first (see Motion).
 
 ## Fonts
 

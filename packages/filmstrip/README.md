@@ -10,6 +10,10 @@ Frames in, films out. A list of RGB frames, whatever drew them, becomes:
 so a long film is never all in memory; the H.264 level follows the frame size and rate. `Frame::downscale` makes a GIF preview
 of a large film.
 
+`pad::Square` places a tall frame as a full-height panel on a square canvas over a blurred copy
+of itself, with grain for the MP4; `video::Picture` is a frame converted for the encoder, so the
+conversion can run ahead of it.
+
 `shots` plans a film from scenes (build-in frames, ticks per frame and a hold each), one `Shot`
 per frame: each build-in, the hold on its last frame, a `Transition` into the next (fade, wipe,
 push, pixelize, circle, split or cut; CPU-drawn, readable at 10 fps), and the last scene back

@@ -215,15 +215,23 @@ pub struct Overflow {
     pub pages: usize,
 }
 
+impl Overflow {
+    /// Which slide: `slide 3 (Title)`.
+    #[must_use]
+    pub fn place(&self) -> String {
+        format!("slide {} ({})", self.slide + 1, self.title)
+    }
+
+    /// What is wrong: `the card overflows onto 2 pages; trim it`.
+    #[must_use]
+    pub fn reason(&self) -> String {
+        format!("the card overflows onto {} pages; trim it", self.pages)
+    }
+}
+
 impl std::fmt::Display for Overflow {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "slide {} ({}): the card overflows onto {} pages; trim it",
-            self.slide + 1,
-            self.title,
-            self.pages
-        )
+        write!(f, "{}: {}", self.place(), self.reason())
     }
 }
 
@@ -241,6 +249,10 @@ pub fn render(loaded: &Loaded, options: &Options, outputs: Outputs) -> Result<Re
     if options.fps == 0 || options.gif_fps == 0 || options.gif_width == 0 {
         bail!("film fps, gif-fps and gif-width must be at least 1");
     }
+    anyhow::ensure!(
+        options.pad == Pad::None || options.format == Format::Tall,
+        "pad: square needs format tall"
+    );
     let engine = engine(&loaded.deck.faces)?;
     let cards = Maker::new(loaded, options)?.cards(&engine)?;
     let stills = run(&engine, &cards, |engine, card| {
@@ -503,13 +515,13 @@ fn engine(faces: &[PathBuf]) -> Result<Engine> {
 }
 
 /// Words a tall or square screen holds before `flipcard lint` warns; more read badly on a phone.
-pub const TALL_WORDS: usize = 12;
+pub const PHONE_WORDS: usize = 12;
 
-/// The tall or square slides with more than [`TALL_WORDS`] words on screen, fully built: 0-based
+/// The tall or square slides with more than [`PHONE_WORDS`] words on screen, fully built: 0-based
 /// index, title, words. Empty for wide films.
 #[must_use]
 pub fn crowded(loaded: &Loaded, options: &Options) -> Vec<(usize, String, usize)> {
-    if !options.format.phone() {
+    if !options.format.is_phone() {
         return Vec::new();
     }
     let slides = loaded.deck.slides.iter().enumerate();
@@ -518,7 +530,7 @@ pub fn crowded(loaded: &Loaded, options: &Options) -> Vec<(usize, String, usize)
             let words = (0..=deckmark::fragments(slide)).map(|step| card::words(slide, step));
             (i, slide.title().unwrap_or_default(), words.sum())
         })
-        .filter(|&(_, _, words)| words > TALL_WORDS)
+        .filter(|&(_, _, words)| words > PHONE_WORDS)
         .collect()
 }
 
@@ -708,6 +720,13 @@ one two three four five six seven eight nine ten
             error.to_string(),
             "pad: square needs format tall, got \"wide\""
         );
+        // options built by hand are checked too
+        let by_hand = Options {
+            pad: Pad::Square,
+            ..quick()
+        };
+        let error = render(&loaded, &by_hand, BOTH).unwrap_err();
+        assert_eq!(error.to_string(), "pad: square needs format tall");
     }
 
     fn tall(source: &str, fps: u16) -> Rendered {

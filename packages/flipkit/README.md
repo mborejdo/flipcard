@@ -21,4 +21,4 @@ std::fs::write("talk/slides.gif", rendered.gif.unwrap_or_default())?;
 ```
 
 A deck from memory: `config.parse(source, name, base)`. `check` lays out only the fully built cards
-(a tall one paged on) and returns the ones that overflow. License: MIT OR Apache-2.0.
+(a tall or square one paged on) and returns the ones that overflow. License: MIT OR Apache-2.0.

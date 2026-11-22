@@ -28,19 +28,14 @@ fn run() -> Result<u8> {
             let options = Options::resolve(flipkit::Settings::default(), &loaded.source, &config)?;
             let overflows = flipkit::check(&loaded, &options)?;
             for overflow in &overflows {
-                println!(
-                    "slide {} ({}): error: the card overflows onto {} pages; trim it",
-                    overflow.slide + 1,
-                    overflow.title,
-                    overflow.pages
-                );
+                println!("{}: error: {}", overflow.place(), overflow.reason());
             }
             let crowded = flipkit::crowded(&loaded, &options);
             for (slide, title, words) in &crowded {
                 println!(
                     "slide {} ({title}): warning: {words} words on one phone screen, more than {}; it pages on, or trim it",
                     slide + 1,
-                    flipkit::TALL_WORDS
+                    flipkit::PHONE_WORDS
                 );
             }
             println!("{} errors, {} warnings", overflows.len(), crowded.len());

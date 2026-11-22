@@ -34,7 +34,7 @@ impl Format {
 
     /// Tall and square take the phone look: big centred words that come in by a preset.
     #[must_use]
-    pub fn phone(self) -> bool {
+    pub fn is_phone(self) -> bool {
         self != Self::Wide
     }
 
@@ -234,7 +234,7 @@ mod tests {
             (square.safe, square.preset),
             (None, Some(crate::Preset::Rise))
         );
-        assert!(Format::Square.phone() && !Format::Wide.phone());
+        assert!(Format::Square.is_phone() && !Format::Wide.is_phone());
         assert_eq!(Format::Wide.defaults(), Settings::default());
     }
 }
