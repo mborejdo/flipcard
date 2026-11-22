@@ -2,7 +2,8 @@
 //! before has landed: a block says next, never when. In a block the words follow each other by
 //! the preset's stagger; `type` and `karaoke` take each word its letters at the pace, half a beat
 //! more after `, ; :` and a beat after `. ! ?`. `//` waits a beat. A marked word draws its mark
-//! (tints and pulses when bold) once it has landed, the heading's marker once the heading has.
+//! (tints and pulses when bold) once it has landed, a run of words marked alike as one sweep from
+//! the left; the heading's marker (or bar) draws once the heading has.
 //!
 //! The kinetic presets know where the words are ([`Timeline::arrange`]): `move` glides the words
 //! the card before has too from there first, then the others come in; `stack` brings line after
@@ -13,8 +14,17 @@ use serde_json::json;
 use super::{Curve, Look, Preset, Spot, count};
 use crate::script::Word;
 
-/// Half-beats a word takes to come in, and a mark to draw.
+/// Half-beats a word takes to come in, and a bold word to pulse.
 const ENTER: f64 = 2.0;
+/// Half-beats a run of marked words takes to draw, left to right as one sweep.
+const MARK: f64 = 3.5;
+/// Half-beats a mark waits after the last word it needs has landed.
+const SETTLE: f64 = 0.5;
+/// Half-beats the heading's bar (or marker) takes to draw; its hot tip fades from halfway over
+/// [`FLASH`].
+const BAR: f64 = 4.0;
+/// Half-beats the bar's hot tip takes to fade.
+const FLASH: f64 = 2.0;
 /// Half-beats a word of the card before glides to its place.
 const GLIDE: f64 = 3.0;
 /// Half-beats a metric counts up.
@@ -66,6 +76,25 @@ impl Cue {
     }
 }
 
+/// A word's share of its run's mark: the run draws from `start` over [`MARK`] half-beats, this
+/// word from `from` to `to` (0 to 1) of the way, by its letters.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Sweep {
+    start: f64,
+    from: f64,
+    to: f64,
+}
+
+/// The same marks on the same line: `b` runs on from `a` as one sweep.
+fn alike(a: &Cue, b: &Cue) -> bool {
+    let (x, y) = (&a.word.run, &b.word.run);
+    a.block == b.block
+        && a.line == b.line
+        && a.step == b.step
+        && (x.bold, x.underline, x.highlight, x.strike)
+            == (y.bold, y.underline, y.highlight, y.strike)
+}
+
 /// When the words of one scene come in, and how they look at any instant.
 #[derive(Clone, Debug)]
 pub(crate) struct Timeline {
@@ -82,6 +111,8 @@ pub(crate) struct Timeline {
     /// The half-beat each word starts to come in and the half-beats it takes; `None` for a word
     /// already there.
     starts: Vec<Option<(f64, f64)>>,
+    /// When each word's mark draws; `None` for a word without one, or already there.
+    sweeps: Vec<Option<Sweep>>,
     /// `stack`: each line's first word and its bottom, in points.
     lines: Vec<(usize, f64)>,
     /// The half-beat the heading's marker starts to draw, if it has one and it comes in.
@@ -107,6 +138,7 @@ impl Timeline {
             pace,
             step,
             starts: Vec::new(),
+            sweeps: Vec::new(),
             lines: Vec::new(),
             mark: None,
             end: 0.0,
@@ -196,9 +228,6 @@ impl Timeline {
             }
             let key = if stack { cue.line } else { cue.block };
             if group != Some(key) {
-                if group == Some(0) && self.marked && !stack {
-                    mark = Some(landed);
-                }
                 let next = words.mul_add(read, landed);
                 (t, group, words) = ((next / 2.0_f64).ceil() * 2.0, Some(key), 0.0);
             }
@@ -212,7 +241,12 @@ impl Timeline {
             };
             starts[i] = Some((t, len));
             landed = landed.max(t + len);
-            end = end.max(t + len + if cue.marked() { ENTER } else { 0.0 });
+            end = end.max(t + len);
+            // the heading's marker (or bar) draws once the heading has landed; a stacked
+            // heading's moves up with the words
+            if cue.block == 0 && self.marked {
+                mark = Some(landed);
+            }
             words += 1.0;
             t += if preset.paced() {
                 len + cue.breath()
@@ -220,13 +254,58 @@ impl Timeline {
                 f64::from(preset.stagger())
             };
         }
-        // a stacked heading's marker waits for the last line: the lines move it till then
-        if self.marked && (group == Some(0) || (stack && group.is_some())) {
-            mark = Some(landed);
+        let sweeps = self.sweeps(&starts);
+        for sweep in sweeps.iter().flatten() {
+            end = end.max(sweep.start + MARK);
         }
         self.starts = starts;
-        self.end = mark.map_or(end, |m| end.max(m + ENTER));
+        self.sweeps = sweeps;
+        self.end = mark.map_or(end, |m| end.max(m + BAR.max(BAR.mul_add(0.5, FLASH))));
         self.mark = mark;
+    }
+
+    /// When each marked word's mark draws: a run of words marked alike on one line draws as one
+    /// sweep from the left, each word its share by letters, starting once every word has landed
+    /// before the sweep reaches it.
+    fn sweeps(&self, starts: &[Option<(f64, f64)>]) -> Vec<Option<Sweep>> {
+        let cues = &self.cues;
+        let mut sweeps = vec![None; cues.len()];
+        let mut i = 0;
+        while i < cues.len() {
+            let fresh =
+                |k: usize| starts[k].is_some() && cues[k].from.is_none() && cues[k].marked();
+            if !fresh(i) {
+                i += 1;
+                continue;
+            }
+            let mut j = i + 1;
+            while j < cues.len() && fresh(j) && alike(&cues[i], &cues[j]) {
+                j += 1;
+            }
+            // each word its letters, the space after it too when the run goes on
+            let widths: Vec<f64> = (i..j)
+                .map(|k| (cues[k].word.letters() + usize::from(k + 1 < j)) as f64)
+                .collect();
+            let total = widths.iter().sum::<f64>().max(1.0);
+            let mut x = 0.0;
+            let mut start = 0.0_f64;
+            let mut shares = Vec::new();
+            for (k, width) in (i..j).zip(&widths) {
+                let landed = starts[k].map_or(0.0, |(s, l)| s + l);
+                start = start.max((x / total).mul_add(-MARK, landed));
+                shares.push((x / total, (x + width) / total));
+                x += width;
+            }
+            for (k, (from, to)) in (i..j).zip(shares) {
+                sweeps[k] = Some(Sweep {
+                    start: start + SETTLE,
+                    from,
+                    to,
+                });
+            }
+            i = j;
+        }
+        sweeps
     }
 
     /// Seconds of the entrances.
@@ -253,7 +332,7 @@ impl Timeline {
         let now = (t / self.half * 1e6).round() / 1e6;
         let p =
             |start: Option<f64>, len: f64| start.map_or(1.0, |s| ((now - s) / len).clamp(0.0, 1.0));
-        let draw = Curve::Strong.at(p(self.mark, ENTER));
+        let draw = Curve::Ease.at(p(self.mark, BAR));
         // stack: the lines in so far sit lower by the room of the lines still coming up
         let sink: f64 = (self.lines.windows(2))
             .map(|pair| {
@@ -281,15 +360,17 @@ impl Timeline {
                 if let Some(spot) = cue.spot.filter(|_| at.is_some()) {
                     look.y += sink / spot.size;
                 }
-                // a word that glides keeps its marks
-                let after = if cue.from.is_some() {
-                    1.0
-                } else {
-                    p(at.map(|s| s + len), ENTER)
-                };
+                // its share of its run's sweep; a word that glides keeps its marks
+                let sweep = self.sweeps[i];
+                let start = sweep.map(|w| w.start);
+                let share = sweep.map_or(1.0, |w| {
+                    let q = Curve::Ease.at(p(start, MARK));
+                    ((q - w.from) / (w.to - w.from)).clamp(0.0, 1.0)
+                });
+                let after = p(start, ENTER);
                 let run = &cue.word.run;
                 if run.bold || run.strike {
-                    look.tint = Curve::Ease.at(after);
+                    look.tint = share;
                 }
                 // a lone bold word pulses; a bold run only tints, its words would grow into
                 // each other's spaces
@@ -306,7 +387,7 @@ impl Timeline {
                     look.s *= 0.12f64.mul_add(up - back, 1.0);
                 }
                 if run.underline || run.highlight || run.strike {
-                    look.draw = Curve::Strong.at(after);
+                    look.draw = share;
                 }
                 if cue.block == 0 && self.marked {
                     look.draw = draw;
@@ -315,6 +396,19 @@ impl Timeline {
             })
             .collect();
         let mut state = json!({ "w": looks, "n": values });
+        // the heading's bar: how far it is drawn, how hot its tip is (fading from halfway)
+        // and how far down the stacked lines still hold it, in points
+        let hot = 1.0 - Curve::Ease.at(p(self.mark.map(|m| BAR.mul_add(0.5, m)), FLASH));
+        let bar: serde_json::Map<_, _> =
+            [("draw", draw, 1.0), ("hot", hot, 0.0), ("dy", sink, 0.0)]
+                .into_iter()
+                .map(|(k, v, rest)| (k, (v * 1e4).round() / 1e4, rest))
+                .filter(|&(_, v, rest)| (v - rest).abs() > 5e-5)
+                .map(|(k, v, _)| (k.to_string(), v.into()))
+                .collect();
+        if self.marked && !bar.is_empty() {
+            state["bar"] = bar.into();
+        }
         if self.preset == Preset::Type && now < self.end && (now / 2.0).floor() % 2.0 == 0.0 {
             // the caret blinks a beat on, a beat off, after the word typed last
             let typed = self
@@ -394,7 +488,8 @@ mod tests {
         let mut cues = words(&[0, 0, 1, 1]);
         cues[3].step = 1;
         let first = Timeline::new(Preset::Rise, 0.4, 200.0, 0, cues.clone(), true);
-        assert_eq!((first.mark, first.end), (Some(3.0), 6.0));
+        // the bar draws over two beats from when the heading has landed
+        assert_eq!((first.mark, first.end), (Some(3.0), 7.0));
         let second = Timeline::new(Preset::Rise, 0.4, 200.0, 1, cues, true);
         assert_eq!(
             (starts(&second), second.mark),
@@ -486,18 +581,18 @@ mod tests {
             mark(&mut cue.word.run);
         }
         let timeline = Timeline::new(Preset::Fade, 0.4, 200.0, 0, cues, false);
-        // all land at 2 half-beats; the marks draw over the next 2
-        assert_eq!(timeline.end, 4.0);
+        // all land at 2 half-beats; the marks draw half a half-beat later, over 3.5
+        assert_eq!(timeline.end, 6.0);
         let look = |t: f64, i: usize| {
             let state: serde_json::Value = serde_json::from_str(&timeline.state(t)).unwrap();
             state["w"][i].clone()
         };
-        assert_eq!(look(0.4, 0)["tint"], 0.0);
-        assert_eq!(look(0.4, 1)["draw"], 0.0);
-        assert_eq!(look(0.6, 0)["s"], 1.12);
-        assert!(look(0.6, 3)["tint"].as_f64().unwrap() > 0.5);
+        assert_eq!(look(0.5, 0)["tint"], 0.0);
+        assert_eq!(look(0.5, 1)["draw"], 0.0);
+        assert_eq!(look(0.7, 0)["s"], 1.12);
+        assert!(look(0.7, 3)["tint"].as_f64().unwrap() > 0.5);
         for i in 0..4 {
-            assert_eq!(look(0.8, i), serde_json::json!({}), "{i}");
+            assert_eq!(look(1.2, i), serde_json::json!({}), "{i}");
         }
     }
 
@@ -508,11 +603,52 @@ mod tests {
             cue.word.run.bold = true;
         }
         let timeline = Timeline::new(Preset::Fade, 0.4, 200.0, 0, cues, false);
-        let state: serde_json::Value = serde_json::from_str(&timeline.state(0.6)).unwrap();
-        for i in 0..2 {
-            assert!(state["w"][i].get("s").is_none(), "{i}");
-            assert!(state["w"][i]["tint"].as_f64().unwrap() > 0.5, "{i}");
+        let state =
+            |t: f64| -> serde_json::Value { serde_json::from_str(&timeline.state(t)).unwrap() };
+        for t in [0.6, 1.0] {
+            for i in 0..2 {
+                assert!(state(t)["w"][i].get("s").is_none(), "{i}");
+            }
         }
+        for i in 0..2 {
+            assert!(
+                state(1.0)["w"][i]["tint"].as_f64().unwrap_or(1.0) > 0.9,
+                "{i}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_run_of_marks_draws_as_one_sweep_from_the_left() {
+        let mut cues = vec![
+            cue(1, "one"),
+            cue(1, "two"),
+            cue(1, "three"),
+            cue(1, "plain"),
+        ];
+        for cue in &mut cues[..3] {
+            cue.word.run.highlight = true;
+        }
+        let timeline = rise(cues);
+        // rise: the words land at 2, 3 and 4 half-beats; the sweep reaches each after it has,
+        // so it starts once the first has: one start for the run
+        let start = 2.0 + SETTLE;
+        let starts: Vec<_> = timeline.sweeps.iter().map(|w| w.map(|w| w.start)).collect();
+        assert_eq!(starts, [Some(start), Some(start), Some(start), None]);
+        let draw = |t: f64, i: usize| {
+            let state: serde_json::Value = serde_json::from_str(&timeline.state(t)).unwrap();
+            state["w"][i]["draw"].as_f64().unwrap_or(1.0)
+        };
+        // part way: the first word drawn further than the second, the third not begun
+        let t = (start + 0.6) * 0.2;
+        assert!(
+            draw(t, 0) > draw(t, 1) && draw(t, 2) == 0.0,
+            "{} {} {}",
+            draw(t, 0),
+            draw(t, 1),
+            draw(t, 2)
+        );
+        assert_eq!(timeline.end, start + MARK);
     }
 
     /// A word box of 10 pt text at (`x`, `y`).
@@ -565,5 +701,31 @@ mod tests {
         // the first line sits a line (12 pt) lower till the second comes up
         assert_eq!((y(0.0, 0), y(1.2, 0), y(2.0, 0)), (1.2, 1.2, 0.0));
         assert_eq!((y(1.2, 2), timeline.length()), (1.2, (8.0 + 8.0) * 0.2));
+    }
+
+    #[test]
+    fn stack_draws_each_lines_marks_once_that_line_has_landed() {
+        let mut cues = words(&[1, 1, 2]);
+        for (i, cue) in cues.iter_mut().enumerate() {
+            cue.word.id = i;
+        }
+        cues[0].word.run.underline = true;
+        cues[2].word.run.highlight = true;
+        let mut timeline = Timeline::new(Preset::Stack, 0.4, 200.0, 0, cues, false);
+        let spots = [at(0.0, 0.0), at(40.0, 0.0), at(0.0, 12.0)];
+        timeline.arrange(&spots.map(Some), &[]);
+        let look = |t: f64, i: usize| -> serde_json::Value {
+            let state: serde_json::Value = serde_json::from_str(&timeline.state(t)).unwrap();
+            state["w"][i].clone()
+        };
+        // line one lands at 2 half-beats and draws its mark before line two comes in at 6,
+        // still a line lower: the mark moves with it
+        let first = timeline.sweeps[0].unwrap().start;
+        assert_eq!(first, 2.0 + SETTLE);
+        assert_eq!(look(1.2, 0), serde_json::json!({ "y": 1.2 }));
+        // line two's mark waits for line two
+        assert_eq!(timeline.sweeps[2].unwrap().start, 8.0 + SETTLE);
+        assert_eq!(look(1.6, 2)["draw"], 0.0);
+        assert_eq!(timeline.end, 8.0 + SETTLE + MARK);
     }
 }

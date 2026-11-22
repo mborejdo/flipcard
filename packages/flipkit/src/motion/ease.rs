@@ -9,8 +9,6 @@ pub(crate) enum Curve {
     Linear,
     /// Fast, then settling (power3.out).
     Ease,
-    /// Faster, then a long settle (expo.out).
-    Strong,
     /// Past the end and back (peak about 1.10).
     Back,
     /// A damped bounce (first peak about 1.09).
@@ -29,7 +27,6 @@ impl Curve {
         match self {
             Self::Linear => x,
             Self::Ease => 1.0 - libm::pow(1.0 - x, 3.0),
-            Self::Strong => 1.0 - libm::exp2(-10.0 * x),
             Self::Back => {
                 let (c, u) = (1.701_58_f64, x - 1.0);
                 (c + 1.0).mul_add(u * u * u, c * u * u) + 1.0
@@ -43,13 +40,7 @@ impl Curve {
 mod tests {
     use super::*;
 
-    const ALL: [Curve; 5] = [
-        Curve::Linear,
-        Curve::Ease,
-        Curve::Strong,
-        Curve::Back,
-        Curve::Spring,
-    ];
+    const ALL: [Curve; 4] = [Curve::Linear, Curve::Ease, Curve::Back, Curve::Spring];
 
     fn samples(curve: Curve) -> Vec<f64> {
         (0..=1000)
@@ -66,10 +57,8 @@ mod tests {
     }
 
     #[test]
-    fn ease_and_strong_only_rise_back_and_spring_overshoot() {
-        for curve in [Curve::Ease, Curve::Strong] {
-            assert!(samples(curve).windows(2).all(|w| w[1] >= w[0]), "{curve:?}");
-        }
+    fn ease_only_rises_back_and_spring_overshoot() {
+        assert!(samples(Curve::Ease).windows(2).all(|w| w[1] >= w[0]));
         let peak = |curve| samples(curve).into_iter().fold(0.0, f64::max);
         assert!(
             (peak(Curve::Back) - 1.10).abs() < 0.005,

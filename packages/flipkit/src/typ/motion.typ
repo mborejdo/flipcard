@@ -1,7 +1,8 @@
 // Motion, ahead of film.typ: one word at one instant. sys.inputs.state (JSON) holds a look per
 // word id (o opacity, x and y offset in em, s scale, draw how far its mark is drawn, chars how
 // much is typed, fill how far ink has filled it from muted, tint toward its mark's colour; a
-// missing field is at rest), the counted metric values (n) and the word the caret follows (c).
+// missing field is at rest), the counted metric values (n), the word the caret follows (c) and
+// the tall heading's bar (bar: draw, hot, dy in points; film.typ draws it).
 // The word's box has its final size; the look moves, scales and fades the glyphs inside it, so
 // nothing reflows. Every word leaves `metadata("id width height size") <word>` (points) at its
 // box's top left: where the words are, for the kinetic presets.
@@ -14,7 +15,8 @@
 // rest when that differs (a counted value), `typed(n)` its first n letters as body and tail, laid
 // out where they are at rest. Its marks, drawn from the left as `draw` grows: `==` a marker
 // stroke just under the baseline in a `heading`, else an accent band behind the glyphs; `__` a
-// line below; `~~` a line through, the word turning muted; `**` turns it to the accent. A mark
+// line below; `~~` a line through, the word turning muted; `**` turns it to the accent. The marks
+// move with the glyphs; only the glyphs scale. A mark
 // on a `bridge` word runs on over the space to the next. A `dot` (a list marker) only moves with
 // its word.
 #let word(w, body, tail: "", final: none, typed: none, heading: false, dot: false) = context {
@@ -43,18 +45,21 @@
     box(width: 0pt, place(left + bottom, dx: 0.04em, dy: 0.15em, rect(width: 0.07em, height: 0.95em, fill: motion-accent)))
   }
   let line-at(dy, stroke) = place(left + bottom, dy: dy, line(length: marked * draw, stroke: stroke))
+  // the marks move with the glyphs (a stacked line still rising); only the glyphs scale
   box(width: size.width, align(left, {
     spot
-    if draw > 0 and mark("highlight") {
-      if heading { line-at(0.08em, (paint: motion-accent, thickness: 0.1em, cap: "round")) } else {
-        // a bridged band ends where the next one starts
-        let pad = if w.at("bridge", default: false) { 0em } else { 0.16em }
-        place(left + bottom, dx: -0.08em, dy: 0.22em, rect(width: marked * draw + pad, height: 1.05em, radius: 0.12em, fill: motion-accent.transparentize(70%)))
+    move(dx: x * 1em, dy: y * 1em, box({
+      if draw > 0 and mark("highlight") {
+        if heading { line-at(0.08em, (paint: motion-accent, thickness: 0.1em, cap: "round")) } else {
+          // a bridged band ends where the next one starts
+          let pad = if w.at("bridge", default: false) { 0em } else { 0.16em }
+          place(left + bottom, dx: -0.08em, dy: 0.22em, rect(width: marked * draw + pad, height: 1.05em, radius: 0.12em, fill: motion-accent.transparentize(70%)))
+        }
       }
-    }
-    if draw > 0 and mark("underline") { line-at(0.2em, 0.09em + alpha(motion-accent)) }
-    let plain = if fill < 1 { paint } else { alpha(text.fill) }
-    move(dx: x * 1em, dy: y * 1em, scale(s * 100%, box(text(fill: paint, body) + text(fill: plain, tail) + caret)))
-    if draw > 0 and mark("strike") { line-at(-0.3em, 0.08em + alpha(motion-muted)) }
+      if draw > 0 and mark("underline") { line-at(0.2em, 0.09em + alpha(motion-accent)) }
+      let plain = if fill < 1 { paint } else { alpha(text.fill) }
+      scale(s * 100%, box(text(fill: paint, body) + text(fill: plain, tail) + caret))
+      if draw > 0 and mark("strike") { line-at(-0.3em, 0.08em + alpha(motion-muted)) }
+    }))
   }))
 }

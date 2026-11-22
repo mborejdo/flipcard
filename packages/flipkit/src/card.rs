@@ -614,12 +614,17 @@ mod tests {
         let (pages, _) = maker.paged(&engine).unwrap();
         let mut card = maker.card(&pages[0], 0).unwrap();
         let still = card.draw(&engine, card.frames - 1).unwrap();
-        let ground = &still.rgb[..3];
         let states = std::mem::take(&mut card.states);
+        // every word hidden: the ground, and the heading's bar with its glow
+        let hidden: Vec<Value> = (0..8).map(|_| serde_json::json!({ "o": 0 })).collect();
+        card.states = vec![serde_json::json!({ "w": hidden }).to_string()];
+        let blank = card.draw(&engine, 0).unwrap();
         for state in states.iter().step_by(3) {
-            // the letters only, no caret or marks: every pixel is the still's or the ground
+            // the letters only, no caret or marks: every pixel is the still's or the blank's
             let mut state: Value = serde_json::from_str(state).unwrap();
-            state.as_object_mut().unwrap().remove("c");
+            let at_rest = state.as_object_mut().unwrap();
+            at_rest.remove("c");
+            at_rest.remove("bar");
             for look in state["w"].as_array_mut().unwrap() {
                 look.as_object_mut()
                     .unwrap()
@@ -627,8 +632,12 @@ mod tests {
             }
             card.states = vec![state.to_string()];
             let frame = card.draw(&engine, 0).unwrap();
-            let moved = frame.rgb.chunks(3).zip(still.rgb.chunks(3));
-            let off = moved.filter(|(a, b)| a != b && *a != ground).count();
+            let moved = frame
+                .rgb
+                .chunks(3)
+                .zip(still.rgb.chunks(3))
+                .zip(blank.rgb.chunks(3));
+            let off = moved.filter(|((a, b), c)| a != b && a != c).count();
             assert_eq!(off, 0, "{state}");
         }
     }

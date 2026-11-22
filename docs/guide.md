@@ -68,22 +68,25 @@ coming in), at least four beats; `hold` is the floor when set. `enter` is for `f
 by their text, each to the first unused one of the scene before; the glide takes a beat and a
 half, then the other words come in. A later key press of a slide brings its words as `rise` does.
 
-Marks draw once their word has landed:
+Marks draw once their word has landed (`stack`: its line), from the left over 0.7 s; words marked
+alike in a row draw as one sweep:
 
-- `**bold**`: turns to the accent and pulses, 1 to 1.12 and back on a spring over a beat.
+- `**bold**`: turns to the accent; a lone bold word pulses, 1 to 1.12 and back on a spring over a
+  beat.
 - `==marked==`: an accent band sweeps in behind the words; the ink stays.
 - `__underlined__`: a line draws from the left.
 - `~~struck~~`: a line draws through it and it turns muted.
 
 - `==word==` in a heading: an accent marker draws behind it from the left once the words have
-  landed. A tall heading without one gets a bar under it instead.
+  landed. A tall heading without one gets a bar under it instead, drawn as a laser: a soft glow
+  and a white-hot tip that fades once it is across.
 - `:::{metrics}`: the values rise and count up over three beats, in their own format (`1 200`,
   `60 %`, `3.5x`), the digits tabular so nothing jumps.
 - Every word sits where it ends up: the card is laid out once at rest and the words move, scale
   and fade inside their boxes. A scene's last frame is its still.
 
 On a tall card the text is big and centred, one idea per screen. On the 360 pt canvas: heading 40,
-text and lists 26, a metric 64 with its label at 18, the footer 12; metrics stack one per row. That
+text and lists 26 (lines and items 1.33 apart), a metric 64 with its label at 18, the footer 12; metrics stack one per row. That
 holds about 12 words: `flipcard lint` warns above. A slide that doesn't fit is not shrunk: it pages
 on into a follow-on scene with the same heading, cut after a block, else after a list item or a
 paragraph line. Only when not even that fits is it an overflow.

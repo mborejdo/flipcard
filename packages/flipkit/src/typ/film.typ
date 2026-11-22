@@ -93,7 +93,8 @@
   bottom: safe-bottom * H * px + 26 * s * px + (if tall and "fit" in sys.inputs { 1.3 * sz(8.4) } else { 0pt }),
 ), fill: ground)
 #set text(font: sans, size: sz(8.4), fill: ink, hyphenate: false, number-type: "lining")
-#set par(leading: 0.55em, spacing: 0.8em, justify: false)
+// tall: big phone text a little more open, about 1.33 lines apart
+#set par(leading: if tall { 0.6em } else { 0.55em }, spacing: 0.8em, justify: false)
 #set smartquote(enabled: false)
 #show raw: set text(font: mono, size: 0.92em)
 #show raw.where(block: false): it => box(fill: surface, inset: (x: 0.3em, y: 0.1em), radius: 2 * s * px, it)
@@ -137,7 +138,8 @@
       if step == 0 { slot += 1 }
     } else if b.kind == "list" {
       left-tall(block(width: 100%, {
-        set par(spacing: 0.45em)
+        // tall: items as far apart as the lines of a paragraph
+        set par(spacing: if tall { 0.6em } else { 0.45em })
         for it in b.items {
           let dot = marker(it.level, it.number)
           let dot = if moving and it.spans.len() > 0 { word(it.spans.first(), dot, dot: true) } else { dot }
@@ -196,6 +198,23 @@
 // from the left once the words have landed
 // a follow-on page's heading stays where the slide's first page has it: `lift` points down
 #let lift = card.at("lift", default: 0)
+// the tall heading's bar as a laser `x` long, `t` thick: a soft accent glow round the line, and
+// while it draws (`hot` 1, fading to 0 once it has) a white-hot tip with a short streak behind it
+#let laser(x, t, hot) = {
+  if x <= 0pt { return }
+  let at(body) = place(left + horizon, body)
+  let stroke(paint, k) = (paint: paint, thickness: k * t, cap: "round")
+  for (k, clear) in ((5, 94%), (2.5, 85%)) { at(line(length: x, stroke: stroke(accent.transparentize(clear), k))) }
+  at(line(length: x, stroke: stroke(accent, 1)))
+  if hot > 0 {
+    let streak = calc.min(x, 16 * t)
+    let core = white.transparentize((1 - hot) * 100%)
+    at(move(dx: x - streak, line(length: streak, stroke: stroke(gradient.linear(accent.transparentize(100%), core), 1))))
+    // the tip swells a little as it cools
+    let r = (3 + 1.5 * (1 - hot)) * t
+    at(move(dx: x - r, circle(radius: r, fill: gradient.radial(core, accent.transparentize(100% - 50% * hot), accent.transparentize(100%)))))
+  }
+}
 #let lifted(body) = if lift == 0 { body } else { move(dy: lift * px, body) }
 #let heading-block = if card.title == none { none } else if moving {
   let body = heading-text(spans(card.title, heading: true), if card.first { 19 } else { 13 })
@@ -203,12 +222,12 @@
     set par(leading: 0.42em)
     body
     if tall and not card.title.any(w => w.highlight) and card.title.len() > 0 {
-      let draw = motion.at("w", default: ()).at(card.title.first().id, default: (:)).at("draw", default: 1)
-      layout(size => {
+      let bar = motion.at("bar", default: (:))
+      let (draw, hot, dy) = (bar.at("draw", default: 1), bar.at("hot", default: 0), bar.at("dy", default: 0))
+      block(above: 14 * s * px, layout(size => {
         let w = measure(body, width: size.width).width
-        v(4 * s * px)
-        box(width: w, align(left, line(length: w * draw, stroke: 3 * s * px + accent)))
-      })
+        move(dy: dy * px, box(width: w, height: 3 * s * px, laser(w * draw, 3 * s * px, hot)))
+      }))
     }
   }))
 } else if card.first {
@@ -235,7 +254,8 @@
 #if card.first or tall {
   align(if tall { center + horizon } else { horizon }, {
     heading-block
-    v(6 * s * px)
+    // tall: the bar balanced between the heading and the text
+    v(if tall { 14 } else { 6 } * s * px)
     body-blocks
   })
 } else {
