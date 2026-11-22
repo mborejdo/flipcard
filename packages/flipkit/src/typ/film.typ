@@ -154,8 +154,8 @@
       if step == 0 { slot += 1 }
     } else if b.kind == "metrics" {
       block(above: 1em, below: 1.1em, grid(
-        // tall: one metric per row, the numbers are big
-        ..if tall { (columns: (auto,), row-gutter: sz(10)) } else { (columns: b.items.map(it => auto)) },
+        // tall: one metric per row, the numbers are big; square and wide side by side
+        ..if H > W { (columns: (auto,), row-gutter: sz(10)) } else { (columns: b.items.map(it => auto)) },
         column-gutter: sz(10),
         ..b.items.enumerate().map(((i, m)) => block(inset: (left: 0.5em, y: 0.1em), stroke: (left: (1.6 * s * px + accent)), {
           set par(leading: 0.7em)

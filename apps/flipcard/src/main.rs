@@ -38,7 +38,7 @@ fn run() -> Result<u8> {
             let crowded = flipkit::crowded(&loaded, &options);
             for (slide, title, words) in &crowded {
                 println!(
-                    "slide {} ({title}): warning: {words} words on one tall screen, more than {}; it pages on, or trim it",
+                    "slide {} ({title}): warning: {words} words on one phone screen, more than {}; it pages on, or trim it",
                     slide + 1,
                     flipkit::TALL_WORDS
                 );
