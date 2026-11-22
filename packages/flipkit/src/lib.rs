@@ -418,14 +418,14 @@ fn engine(faces: &[PathBuf]) -> Result<Engine> {
     Ok(builder.build())
 }
 
-/// Words a tall screen holds before `flipcard lint` warns; more read badly on a phone.
+/// Words a tall or square screen holds before `flipcard lint` warns; more read badly on a phone.
 pub const TALL_WORDS: usize = 12;
 
-/// The tall slides with more than [`TALL_WORDS`] words on screen, fully built: 0-based index,
-/// title, words. Empty for wide and square films.
+/// The tall or square slides with more than [`TALL_WORDS`] words on screen, fully built: 0-based
+/// index, title, words. Empty for wide films.
 #[must_use]
 pub fn crowded(loaded: &Loaded, options: &Options) -> Vec<(usize, String, usize)> {
-    if options.format != Format::Tall {
+    if !options.format.phone() {
         return Vec::new();
     }
     let slides = loaded.deck.slides.iter().enumerate();

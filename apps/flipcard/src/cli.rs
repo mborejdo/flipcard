@@ -101,7 +101,7 @@ pub(crate) struct FilmArgs {
     #[arg(long, value_name = "NAME")]
     pub(crate) safe: Option<flipkit::Safe>,
     /// How the words come in: flip, rise, slide, fade, pop, still, type, karaoke, move or stack;
-    /// a scene sets its own with `:::{scene} pop` [default: flip, rise for tall].
+    /// a scene sets its own with `:::{scene} pop` [default: flip, rise for tall and square].
     #[arg(long, value_name = "NAME")]
     pub(crate) preset: Option<flipkit::Preset>,
     /// Frames per second (--fps 12) [default: 10, 30 for tall and square].

@@ -12,7 +12,7 @@ use typstkit::{Engine, Input, Main};
 
 use crate::motion::{Preset, Spot, Timeline};
 use crate::script::{self, Scene};
-use crate::{Format, Frame, Options, Overflow};
+use crate::{Frame, Options, Overflow};
 
 /// The card layout, `word()` first.
 const CARD: &str = concat!(include_str!("typ/motion.typ"), include_str!("typ/film.typ"));
@@ -252,7 +252,7 @@ impl<'a> Maker<'a> {
                 if spill == 1 {
                     break;
                 }
-                let split = if self.options.format == Format::Tall {
+                let split = if self.options.format.phone() {
                     self.split(engine, &page)?
                 } else {
                     None
@@ -390,7 +390,7 @@ fn timeline(
         cue.step = usize::MAX; // a follow-on page's heading is already there
     }
     let heading = page.slide.heading.as_deref();
-    let marked = heading.is_some_and(|h| o.format == Format::Tall || h.iter().any(|s| s.highlight));
+    let marked = heading.is_some_and(|h| o.format.phone() || h.iter().any(|s| s.highlight));
     let wpm = scene.pace.unwrap_or_else(|| f64::from(o.pace));
     let beat = scene.beat.unwrap_or(BEAT);
     Timeline::new(preset, beat, wpm, step, cues, marked)
@@ -560,7 +560,7 @@ mod tests {
     use std::path::Path;
 
     use super::*;
-    use crate::{Config, Settings};
+    use crate::{Config, Format, Settings};
 
     fn tall(source: &str) -> (Loaded, Options) {
         let loaded = Config::default().parse(source, "test", Path::new("."));

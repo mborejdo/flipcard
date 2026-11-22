@@ -15,7 +15,7 @@
 #let frames = int(sys.inputs.at("frames", default: "1"))
 #let W = float(sys.inputs.at("width", default: "320"))
 #let H = float(sys.inputs.at("height", default: W * 9 / 16))
-#let tall = H > W
+#let tall = H >= W // tall or square: the phone look
 #let moving = card.at("motion", default: false)
 #let s = W / (if W > H { 320 } else { 360 }) // every size below is set for a 320 pt wide card, 360 pt tall or square
 #let (safe-top, safe-right, safe-bottom, safe-left) = sys.inputs.at("safe", default: "0 0 0 0").split(" ").map(float)

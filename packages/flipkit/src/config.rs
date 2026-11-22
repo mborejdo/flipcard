@@ -29,7 +29,7 @@ pub struct Settings {
     /// Width in pixels, even (640).
     pub width: Option<u32>,
     /// How the words come in: flip, rise, slide, fade, pop, still, type, karaoke, move or stack
-    /// (flip; rise for tall).
+    /// (flip; rise for tall and square).
     pub preset: Option<crate::Preset>,
     /// Seconds every scene stays at least (7 for flip).
     pub hold: Option<f32>,
