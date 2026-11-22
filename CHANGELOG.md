@@ -6,7 +6,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ### Fixed
 - Square films take the phone look: big centred words, page-on, words that rise.
-- A run of bold words that pulses at once keeps its spaces.
+- A run of bold words only tints; a lone bold word still pulses. Pulsing together, the words
+  grew into each other's spaces.
 
 ### Changed
 

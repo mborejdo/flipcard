@@ -267,7 +267,8 @@ impl Timeline {
             .cues
             .iter()
             .zip(&self.starts)
-            .map(|(cue, &start)| {
+            .enumerate()
+            .map(|(i, (cue, &start))| {
                 let (at, len) = start.map_or((None, 1.0), |(s, l)| (Some(s), l));
                 let mut look = match (&cue.value, cue.from) {
                     (Some(value), _) => {
@@ -290,7 +291,13 @@ impl Timeline {
                 if run.bold || run.strike {
                     look.tint = Curve::Ease.at(after);
                 }
-                if run.bold {
+                // a lone bold word pulses; a bold run only tints, its words would grow into
+                // each other's spaces
+                let bold = |j: Option<usize>| {
+                    j.and_then(|j| self.cues.get(j))
+                        .is_some_and(|c| c.block == cue.block && c.word.run.bold)
+                };
+                if run.bold && !bold(i.checked_sub(1)) && !bold(Some(i + 1)) {
                     // up on a spring over half a beat, back on one over the other half
                     let (up, back) = (
                         Curve::Spring.at(2.0 * after),
@@ -491,6 +498,20 @@ mod tests {
         assert!(look(0.6, 3)["tint"].as_f64().unwrap() > 0.5);
         for i in 0..4 {
             assert_eq!(look(0.8, i), serde_json::json!({}), "{i}");
+        }
+    }
+
+    #[test]
+    fn a_bold_run_tints_without_a_pulse() {
+        let mut cues = words(&[1, 1]);
+        for cue in &mut cues {
+            cue.word.run.bold = true;
+        }
+        let timeline = Timeline::new(Preset::Fade, 0.4, 200.0, 0, cues, false);
+        let state: serde_json::Value = serde_json::from_str(&timeline.state(0.6)).unwrap();
+        for i in 0..2 {
+            assert!(state["w"][i].get("s").is_none(), "{i}");
+            assert!(state["w"][i]["tint"].as_f64().unwrap() > 0.5, "{i}");
         }
     }
 

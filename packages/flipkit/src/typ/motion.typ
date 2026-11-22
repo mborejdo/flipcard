@@ -54,9 +54,6 @@
     }
     if draw > 0 and mark("underline") { line-at(0.2em, 0.09em + alpha(motion-accent)) }
     let plain = if fill < 1 { paint } else { alpha(text.fill) }
-    // a bold word grows into at most a quarter of the space on either side, so a bold run that
-    // pulses at once keeps half of every gap
-    if mark("bold") and s > 1 { s = calc.min(s, 1 + measure(text(" ")).width / 2 / size.width) }
     move(dx: x * 1em, dy: y * 1em, scale(s * 100%, box(text(fill: paint, body) + text(fill: plain, tail) + caret)))
     if draw > 0 and mark("strike") { line-at(-0.3em, 0.08em + alpha(motion-muted)) }
   }))
