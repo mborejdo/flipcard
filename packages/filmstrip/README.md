@@ -7,7 +7,8 @@ Frames in, films out. A list of RGB frames, whatever drew them, becomes:
 - an MP4, H.264 in pure Rust (`rusty_h264-encoder`, `mp4`), feature `mp4`.
 
 `gif::Writer` and `video::Writer` take the frames one by one (a frame and how often it repeats),
-so a long film is never all in memory; the H.264 level follows the frame size and rate. `Frame::downscale` makes a GIF preview
+so a long film is never all in memory; the H.264 level follows the frame size and rate. A GIF
+loops forever unless `gif::Repeat::Once` is set: then it plays once and rests on the last frame. `Frame::downscale` makes a GIF preview
 of a large film.
 
 `pad::Square` places a tall frame as a full-height panel on a square canvas over a blurred copy

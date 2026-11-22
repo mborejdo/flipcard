@@ -10,6 +10,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
   full-height panel over a blurred, toned-down copy of itself with a glow in the accent colour,
   a vignette and, in the MP4, a fine grain that moves every 4th frame. Tall only; the safe area
   then defaults to none.
+- filmstrip: `gif::Repeat` and `gif::Writer::repeat`: a GIF that plays once and rests on its last
+  frame (`Repeat::Once`, no NETSCAPE2.0 block). `Repeat::Forever` stays the default, byte for
+  byte.
 - filmstrip: `pad::Square`, the compositor, and `video::Picture`, a frame converted for the
   encoder ahead of it.
 

@@ -7,13 +7,24 @@ use std::collections::HashMap;
 
 use anyhow::{Result, bail};
 use color_quant::NeuQuant;
-use gif::{DisposalMethod, Encoder, Frame as GifFrame, Repeat};
+use gif::{DisposalMethod, Encoder, Frame as GifFrame};
 
 use crate::Frame;
 
 /// Some players cap a single frame delay around a second, so a longer hold is written as the
 /// frame plus 1x1 transparent "keep" frames that only carry time.
 const MAX_DELAY_CS: u32 = 100;
+
+/// How often a GIF plays.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Repeat {
+    /// Loops forever (a NETSCAPE2.0 block with loop count 0).
+    #[default]
+    Forever,
+    /// Plays once and stays on the last frame: no NETSCAPE2.0 block at all, since a loop count
+    /// of 1 plays twice in some browsers.
+    Once,
+}
 
 /// A GIF written frame by frame. Frames are written late: identical neighbours fold into the
 /// delay of the frame on screen, and every frame after the first is a delta against the previous.
@@ -23,6 +34,7 @@ pub struct Writer {
     cache: HashMap<[u8; 3], u8>,
     size: (u16, u16),
     transparent: u8,
+    repeat: Repeat,
     /// Centiseconds per frame.
     tick: u32,
     /// The indexed frame on screen.
@@ -73,18 +85,25 @@ impl Writer {
             .collect();
         let transparent = u8::try_from(palette.len() / 3)?;
         palette.extend_from_slice(&[0, 0, 0]);
-        let mut enc = Encoder::new(Vec::new(), w, h, &palette)?;
-        enc.set_repeat(Repeat::Infinite)?;
+        let enc = Encoder::new(Vec::new(), w, h, &palette)?;
         Ok(Self {
             enc,
             nq,
             cache: HashMap::new(),
             size: (w, h),
             transparent,
+            repeat: Repeat::Forever,
             tick: (100.0 / f32::from(fps)).round().max(1.0) as u32,
             shown: None,
             pending: None,
         })
+    }
+
+    /// Set how often the GIF plays; [`Repeat::Forever`] unless set.
+    #[must_use]
+    pub const fn repeat(mut self, repeat: Repeat) -> Self {
+        self.repeat = repeat;
+        self
     }
 
     /// Add `frame`, the GIF's size, as the next `count` frames.
@@ -140,6 +159,9 @@ impl Writer {
         let (w, h) = self.size;
         let (wu, hu) = (usize::from(w), usize::from(h));
         let transparent = self.transparent;
+        if self.shown.is_none() && self.repeat == Repeat::Forever {
+            self.enc.set_repeat(gif::Repeat::Infinite)?;
+        }
         let frame = match self.shown.as_deref() {
             Some(prev) => {
                 let (mut x0, mut y0, mut x1, mut y1) = (wu, hu, 0usize, 0usize);
@@ -270,6 +292,30 @@ mod tests {
         let frames = frames_of(&gif);
         assert_eq!(frames.len(), 2);
         assert_eq!(frames[1], (5, 2, 2, 1, 10));
+    }
+
+    #[test]
+    fn once_writes_no_loop_block_and_forever_does() {
+        let a = Frame::solid(4, 2, [0, 0, 0]);
+        let b = Frame::solid(4, 2, [255, 255, 255]);
+        let write = |repeat| {
+            let mut writer = Writer::new(4, 2, &[a.clone(), b.clone()], 10, 4)
+                .unwrap()
+                .repeat(repeat);
+            writer.push(&a, 1).unwrap();
+            writer.push(&b, 1).unwrap();
+            writer.finish().unwrap()
+        };
+        let has_loop = |gif: &[u8]| gif.windows(11).any(|w| w == b"NETSCAPE2.0");
+        let (forever, once) = (write(Repeat::Forever), write(Repeat::Once));
+        assert!(has_loop(&forever));
+        assert!(!has_loop(&once));
+        assert_eq!(frames_of(&forever), frames_of(&once));
+        // the default is forever, byte for byte
+        let mut writer = Writer::new(4, 2, &[a.clone(), b.clone()], 10, 4).unwrap();
+        writer.push(&a, 1).unwrap();
+        writer.push(&b, 1).unwrap();
+        assert_eq!(writer.finish().unwrap(), forever);
     }
 
     #[test]
