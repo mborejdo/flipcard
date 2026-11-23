@@ -55,9 +55,12 @@
     move(dx: x * 1em, dy: y * 1em, box({
       if draw > 0 and mark("highlight") {
         if heading { line-at(0.08em, (paint: motion-accent, thickness: 0.1em, cap: "round")) } else {
-          // a bridged band ends where the next one starts
-          let pad = if w.at("bridge", default: false) { 0em } else { 0.16em }
-          place(left + bottom, dx: -0.08em, dy: 0.22em, rect(width: marked * draw + pad, height: 1.05em, radius: 0.12em, fill: motion-accent.transparentize(70%)))
+          // a run of words is one band: a bridged band ends square where the next starts square
+          let (from, on) = (w.at("bridged", default: false), w.at("bridge", default: false))
+          let (lpad, rpad) = (if from { 0em } else { 0.08em }, if on { 0em } else { 0.08em })
+          let (l, r) = (if from { 0em } else { 0.12em }, if on { 0em } else { 0.12em })
+          let radius = (top-left: l, bottom-left: l, top-right: r, bottom-right: r)
+          place(left + bottom, dx: -lpad, dy: 0.22em, rect(width: marked * draw + lpad + rpad, height: 1.05em, radius: radius, fill: motion-accent.transparentize(70%)))
         }
       }
       if draw > 0 and mark("underline") { line-at(0.2em, 0.09em + alpha(motion-accent)) }

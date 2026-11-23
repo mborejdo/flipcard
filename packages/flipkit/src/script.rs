@@ -88,6 +88,9 @@ pub(crate) struct Word {
     /// Its mark runs on over the space to the next word, marked alike.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub bridge: bool,
+    /// Its mark runs on from the word before, over the space between.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub bridged: bool,
 }
 
 impl Word {
@@ -122,9 +125,12 @@ pub(crate) fn tokenize(runs: &[Run], pause: &mut bool) -> Vec<Word> {
                 },
                 last => {
                     // a line mark runs on to the next word of its run, unless punctuation is between
-                    if let Some(last) = last.filter(|l| i > 0 && l.tail.is_empty()) {
-                        last.bridge = run.underline || run.highlight || run.strike;
-                    }
+                    let bridged = last
+                        .filter(|l| i > 0 && l.tail.is_empty())
+                        .is_some_and(|last| {
+                            last.bridge = run.underline || run.highlight || run.strike;
+                            last.bridge
+                        });
                     // trailing punctuation goes to the tail, so a mark leaves it out
                     let cut = token.trim_end_matches(TRAILING);
                     let cut = if run.code || cut.is_empty() {
@@ -139,6 +145,7 @@ pub(crate) fn tokenize(runs: &[Run], pause: &mut bool) -> Vec<Word> {
                             ..run.clone()
                         },
                         tail: token[cut.len()..].to_string(),
+                        bridged,
                         ..Word::default()
                     });
                 },
@@ -293,6 +300,9 @@ mod tests {
         assert_eq!(bridges("No ~~big bang~~ here"), [false, true, false, false]);
         assert_eq!(bridges("==one, two== **bold words**"), [false; 4]);
         assert_eq!(bridges("==a== ==b=="), [false, false]);
+        let from = |text: &str| -> Vec<bool> { words(text).iter().map(|w| w.bridged).collect() };
+        assert_eq!(from("No ==big bang== here"), [false, false, true, false]);
+        assert_eq!(from("==one, two== ==a== ==b=="), [false; 4]);
     }
 
     #[test]
