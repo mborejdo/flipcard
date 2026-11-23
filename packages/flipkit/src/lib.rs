@@ -64,6 +64,8 @@ pub struct Options {
     pub width: u32,
     /// How the words come in, unless a scene says otherwise.
     pub preset: Preset,
+    /// How the heading comes in; unset, as the words.
+    pub heading_preset: Option<Preset>,
     /// Seconds every scene stays at least, build-in included; unset, a flip scene stays 7 and
     /// a motion scene its entrances and four beats.
     pub hold: Option<f32>,
@@ -94,6 +96,7 @@ impl Default for Options {
             fps: 10,
             width: 640,
             preset: Preset::Flip,
+            heading_preset: None,
             hold: None,
             enter: 1.6,
             fade: 0.4,
@@ -134,6 +137,7 @@ impl Options {
             fps,
             width,
             preset: set.preset.unwrap_or(base.preset),
+            heading_preset: set.heading_preset,
             hold: set.hold,
             enter: set.enter.unwrap_or(base.enter),
             fade: set.fade.unwrap_or(base.fade),

@@ -393,7 +393,11 @@ fn timeline(
     let marked = heading.is_some_and(|h| o.format.is_phone() || h.iter().any(|s| s.highlight));
     let wpm = scene.pace.unwrap_or_else(|| f64::from(o.pace));
     let beat = scene.beat.unwrap_or(BEAT);
-    Timeline::new(preset, beat, wpm, step, cues, marked)
+    let timeline = Timeline::new(preset, beat, wpm, step, cues, marked);
+    match o.heading_preset {
+        Some(heading) if heading != preset => timeline.heading(heading),
+        _ => timeline,
+    }
 }
 
 /// The state of every build-in frame of `timeline`, how many there are and the seconds the scene

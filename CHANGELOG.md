@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 - Presets `wave` (the letters hop up and back in a ripple), `drop` (they fall into place one after
   the other, landing on a spring) and `decode` (each letter a scramble of its kind that settles
   from the left, the same on every run). `examples/letters` shows them.
+- `heading-preset` (frontmatter, `[film]`, `--heading-preset`, the same precedence as `preset`):
+  the heading comes in by a preset of its own, the text by `preset` or the scene's. `preset: type`
+  with `heading-preset: rise`: the heading rises with its bar, then the text is typed. Unset, as
+  before.
 
 ### Changed
 

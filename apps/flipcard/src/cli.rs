@@ -31,8 +31,8 @@ Examples:
 
 A flip build-in is `enter` seconds of animation, then `hold` seconds of rest; the other presets
 bring the words in on a beat and hold them for their reading time. Frontmatter (format, safe,
-pad, preset, fps, width, hold, enter, fade, transition, pace, colours, gif-width, gif-fps) and
-`[film]` in flipcard.toml set the same values; a flag beats both, and the format brings its own
+pad, preset, heading-preset, fps, width, hold, enter, fade, transition, pace, colours, gif-width,
+gif-fps) and `[film]` in flipcard.toml set the same values; a flag beats both, and the format brings its own
 defaults under them. A card that doesn't fit is an error naming the slide; `flipcard lint` finds them all.
 
 Exit codes:
@@ -112,6 +112,10 @@ pub(crate) struct FilmArgs {
     /// a scene sets its own with `:::{scene} pop` [default: flip, rise for tall and square].
     #[arg(long, value_name = "NAME")]
     pub(crate) preset: Option<flipkit::Preset>,
+    /// How the heading comes in, the rest by the preset (--heading-preset rise with --preset
+    /// type: the heading rises with its bar, then the text is typed) [default: the preset].
+    #[arg(long, value_name = "NAME")]
+    pub(crate) heading_preset: Option<flipkit::Preset>,
     /// Frames per second (--fps 12) [default: 10, 30 for tall and square].
     #[arg(long, value_name = "N")]
     pub(crate) fps: Option<u16>,
@@ -156,6 +160,7 @@ impl FilmArgs {
             safe: self.safe,
             pad: self.pad,
             preset: self.preset,
+            heading_preset: self.heading_preset,
             fps: self.fps,
             width: self.width,
             hold: self.hold,

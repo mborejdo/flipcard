@@ -1,5 +1,5 @@
 //! The films' bytes: SHA-256 of every file of the wide example, of a small tall render of the
-//! phone example, of its films padded square, of typed marks and of the letter presets, against `golden.sha256`. `FLIPCARD_BLESS=1` rewrites that file.
+//! phone example, of its films padded square, of typed marks, of a heading that rises over typed text and of the letter presets, against `golden.sha256`. `FLIPCARD_BLESS=1` rewrites that file.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -75,6 +75,13 @@ fn the_films_are_the_golden_bytes() {
     };
     files.extend(
         films("type", "packages/flipkit/tests/type/marks.md", typed)
+            .unwrap()
+            .into_iter()
+            .filter(|(name, _)| !name.contains("/cards/")),
+    );
+    // the heading rises with its bar, then the text is typed
+    files.extend(
+        films("heading", "packages/flipkit/tests/type/heading.md", typed)
             .unwrap()
             .into_iter()
             .filter(|(name, _)| !name.contains("/cards/")),

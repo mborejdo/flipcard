@@ -34,6 +34,9 @@ pub struct Settings {
     /// wave, drop or decode
     /// (flip; rise for tall and square).
     pub preset: Option<crate::Preset>,
+    /// How the heading comes in, the rest by `preset` (the preset).
+    #[serde(rename = "heading-preset")]
+    pub heading_preset: Option<crate::Preset>,
     /// Seconds every scene stays at least (7 for flip).
     pub hold: Option<f32>,
     /// Seconds of build-in (1.6).
@@ -63,6 +66,7 @@ impl Settings {
             safe: self.safe.or(under.safe),
             pad: self.pad.or(under.pad),
             preset: self.preset.or(under.preset),
+            heading_preset: self.heading_preset.or(under.heading_preset),
             fps: self.fps.or(under.fps),
             width: self.width.or(under.width),
             hold: self.hold.or(under.hold),
@@ -76,7 +80,8 @@ impl Settings {
         }
     }
 
-    /// Read the film keys of a deck's frontmatter (`format`, `safe`, `pad`, `preset`, `fps`,
+    /// Read the film keys of a deck's frontmatter (`format`, `safe`, `pad`, `preset`,
+    /// `heading-preset`, `fps`,
     /// `width`, `hold`, `enter`, `fade`, `transition`, `pace`, `colours`, `gif-width`, `gif-fps`);
     /// a value that is not a number, or not one of the key's names, is an error naming the key.
     pub fn from_frontmatter(get: impl Fn(&str) -> Option<String>) -> Result<Self> {
@@ -100,6 +105,13 @@ impl Settings {
             safe: named(get("safe"))?,
             pad: named(get("pad"))?,
             preset: named(get("preset"))?,
+            heading_preset: get("heading-preset")
+                .map(|v| {
+                    v.parse()
+                        .map_err(|e: crate::ParseNameError| e.keyed("heading-preset"))
+                })
+                .transpose()
+                .context("frontmatter")?,
             fps: number("fps", get("fps"))?,
             width: number("width", get("width"))?,
             hold: number("hold", get("hold"))?,
@@ -254,6 +266,10 @@ impl fmt::Display for Config {
             ("safe", set.safe.map(|v| format!("{v:?}").to_lowercase())),
             ("pad", set.pad.map(|v| format!("{v:?}").to_lowercase())),
             ("preset", set.preset.map(|v| v.name().to_string())),
+            (
+                "heading-preset",
+                set.heading_preset.map(|v| v.name().to_string()),
+            ),
             ("fps", set.fps.map(|v| v.to_string())),
             ("width", set.width.map(|v| v.to_string())),
             ("hold", set.hold.map(|v| v.to_string())),
@@ -352,5 +368,35 @@ mod tests {
         );
         let tall = Settings::from_frontmatter(|key| (key == "format").then(|| "tall".into()));
         assert_eq!(tall.unwrap().format, Some(crate::Format::Tall));
+    }
+
+    #[test]
+    fn the_heading_preset_is_read_like_the_preset() {
+        let front = Settings::from_frontmatter(|key| match key {
+            "preset" => Some("type".into()),
+            "heading-preset" => Some("rise".into()),
+            _ => None,
+        })
+        .expect("frontmatter");
+        assert_eq!(
+            (front.preset, front.heading_preset),
+            (Some(crate::Preset::Type), Some(crate::Preset::Rise))
+        );
+        let file: Settings = toml::from_str("heading-preset = \"pop\"").expect("toml");
+        let flags = Settings {
+            heading_preset: Some(crate::Preset::Drop),
+            ..Settings::default()
+        };
+        assert_eq!(front.over(file).heading_preset, Some(crate::Preset::Rise));
+        assert_eq!(flags.over(front).heading_preset, Some(crate::Preset::Drop));
+        assert_eq!(
+            Settings::default().over(file).heading_preset,
+            Some(crate::Preset::Pop)
+        );
+        let error = Settings::from_frontmatter(|key| (key == "heading-preset").then(|| "x".into()));
+        assert!(
+            format!("{:#}", error.unwrap_err())
+                .starts_with("frontmatter: heading-preset: expected one of flip, rise,")
+        );
     }
 }

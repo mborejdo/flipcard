@@ -106,6 +106,8 @@ fn alike(a: &Cue, b: &Cue) -> bool {
 #[derive(Clone, Debug)]
 pub(crate) struct Timeline {
     preset: Preset,
+    /// How the heading comes in (the preset unless set).
+    heading: Preset,
     /// Seconds per half-beat.
     half: f64,
     /// Words a minute.
@@ -141,6 +143,7 @@ impl Timeline {
     ) -> Self {
         let mut timeline = Self {
             preset,
+            heading: preset,
             half: beat / 2.0,
             pace,
             step,
@@ -156,9 +159,25 @@ impl Timeline {
         timeline
     }
 
+    /// The heading comes in by `preset`, the rest as before.
+    pub(crate) fn heading(mut self, preset: Preset) -> Self {
+        self.heading = preset;
+        self.schedule();
+        self
+    }
+
+    /// How `cue` comes in: the heading by its own preset.
+    const fn of(&self, cue: &Cue) -> Preset {
+        if cue.block == 0 {
+            self.heading
+        } else {
+            self.preset
+        }
+    }
+
     /// It times its words by where they are.
     pub(crate) const fn kinetic(&self) -> bool {
-        self.preset.kinetic()
+        self.preset.kinetic() || self.heading.kinetic()
     }
 
     /// The words on screen once it is at rest.
@@ -173,20 +192,22 @@ impl Timeline {
     pub(crate) fn arrange(&mut self, spots: &[Option<Spot>], before: &[(String, Spot)]) {
         let mut taken = vec![false; before.len()];
         let mut last: Option<Spot> = None;
+        let (body, heading) = (self.preset, self.heading);
         for cue in &mut self.cues {
+            let preset = if cue.block == 0 { heading } else { body };
             cue.spot = spots.get(cue.word.id).copied().flatten();
             let Some(spot) = cue.spot.filter(|_| cue.step == self.step) else {
                 continue;
             };
             let text = &cue.word.run.text;
-            if self.preset == Preset::Move
+            if preset == Preset::Move
                 && let Some(((_, was), taken)) = (before.iter().zip(&mut taken))
                     .find(|((t, _), taken)| !**taken && !text.is_empty() && t == text)
             {
                 *taken = true;
                 cue.from = Some(spot.from(*was));
             }
-            if self.preset != Preset::Stack {
+            if preset != Preset::Stack {
                 continue;
             }
             // a new line once a word sits lower than half the one before
@@ -205,8 +226,7 @@ impl Timeline {
     /// When every word comes in. The blocks (`stack`: the lines) come in on the beat after the
     /// one before has landed (`stack`: and been read); `move` glides first.
     fn schedule(&mut self) {
-        let (preset, half, cues) = (self.preset, self.half, &self.cues);
-        let stack = preset == Preset::Stack;
+        let (half, cues) = (self.half, &self.cues);
         // half-beats a letter and a word take at the pace
         let at_pace = |per_minute: f64| {
             if self.pace > 0.0 {
@@ -216,7 +236,6 @@ impl Timeline {
             }
         };
         let letter = at_pace(LETTERS);
-        let read = if stack { at_pace(1.0) } else { 0.0 };
         let mut starts: Vec<_> = cues
             .iter()
             .map(|c| (c.step == self.step && c.from.is_some()).then_some((0.0, GLIDE)))
@@ -227,16 +246,20 @@ impl Timeline {
             0.0
         };
         let (mut t, mut landed, mut end, mut mark, mut group) = (0.0, glide, glide, None, None);
-        let mut words = 0.0_f64;
-        let moving = !matches!(preset, Preset::Still | Preset::Flip);
+        // the words of the group so far, and the half-beats each takes to read (`stack`)
+        let (mut words, mut read) = (0.0_f64, 0.0);
         for (i, cue) in cues.iter().enumerate() {
+            let preset = self.of(cue);
+            let moving = !matches!(preset, Preset::Still | Preset::Flip);
             if cue.step != self.step || !moving || starts[i].is_some() {
                 continue;
             }
-            let key = if stack { cue.line } else { cue.block };
+            let stack = preset == Preset::Stack;
+            let key = (stack, if stack { cue.line } else { cue.block });
             if group != Some(key) {
                 let next = words.mul_add(read, landed);
                 (t, group, words) = ((next / 2.0_f64).ceil() * 2.0, Some(key), 0.0);
+                read = if stack { at_pace(1.0) } else { 0.0 };
             }
             if cue.word.run.pause {
                 t += 2.0;
@@ -380,12 +403,12 @@ impl Timeline {
                         let graphemes = cue.word.graphemes();
                         let q = p(at, len);
                         // the caret sits after the letters typed so far of the word typed last
-                        if self.preset == Preset::Type && at.is_some_and(|a| a <= now) {
+                        let preset = self.of(cue);
+                        if preset == Preset::Type && at.is_some_and(|a| a <= now) {
                             caret = Some((cue.word.id, Preset::typed(q, graphemes.len())));
                         }
                         let word;
-                        (word, letters) =
-                            shape(self.preset.letters(q, &graphemes, cue.word.id as u64));
+                        (word, letters) = shape(preset.letters(q, &graphemes, cue.word.id as u64));
                         word
                     },
                 };
@@ -681,6 +704,38 @@ mod tests {
         assert!(!caret(timeline.entrances()));
         let rose = rise(words(&[1, 1]));
         assert!(!rose.state(0.0).contains(r#""c":"#));
+    }
+
+    #[test]
+    fn the_heading_comes_in_by_its_own_preset_then_the_text_by_the_scenes() {
+        let mut cues = vec![
+            cue(0, "Ship"),
+            cue(0, "small"),
+            cue(1, "one"),
+            cue(1, "two"),
+        ];
+        for (i, cue) in cues.iter_mut().enumerate() {
+            cue.word.id = i;
+        }
+        let typed = Timeline::new(Preset::Type, 0.4, 200.0, 0, cues.clone(), true);
+        let timeline = typed.clone().heading(Preset::Rise);
+        // the heading rises word by word, half a beat apart, and lands at 3; its bar draws from
+        // there, the text is typed from the beat after
+        let at = starts(&timeline);
+        assert_eq!((at[0], at[1], at[2]), (Some(0.0), Some(1.0), Some(4.0)));
+        assert_eq!(timeline.mark, Some(3.0));
+        let state =
+            |t: f64| -> serde_json::Value { serde_json::from_str(&timeline.state(t)).unwrap() };
+        assert_eq!(
+            state(0.0)["w"][0],
+            json!({ "draw": 0.0, "o": 0.0, "y": 0.5 })
+        );
+        // no caret in a rising heading; one in the typed text
+        assert!(state(0.4).get("c").is_none());
+        assert_eq!(state(0.8)["c"], json!([2, 0]));
+        // the same preset for both is the timeline as it was
+        let same = typed.clone().heading(Preset::Type);
+        assert_eq!((starts(&same), same.end), (starts(&typed), typed.end));
     }
 
     #[test]

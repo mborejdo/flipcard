@@ -185,6 +185,12 @@ impl ParseNameError {
             got: got.to_string(),
         }
     }
+
+    /// The same error for a value given as `key` (`heading-preset` takes a preset).
+    pub(crate) const fn keyed(mut self, key: &'static str) -> Self {
+        self.key = key;
+        self
+    }
 }
 
 impl fmt::Display for ParseNameError {

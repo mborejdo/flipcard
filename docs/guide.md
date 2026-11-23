@@ -60,6 +60,11 @@ for the film, `:::{scene}` for one slide:
 | `drop` | word by word, the letters falling into place one after the other, landing on a spring |
 | `decode` | word by word, each letter a scramble of its kind (a capital, a small letter, a digit) that settles from the left |
 
+`heading-preset` (frontmatter, `[film]` or `--heading-preset`, the same precedence) brings the
+heading in by a preset of its own, on every slide, and the text by `preset` or the scene's:
+`preset: type` with `heading-preset: rise` lets the heading rise with its bar, then types the text.
+Unset, the heading comes in as the text does.
+
 Time runs in beats (0.4 s, `:beat:` changes it). The heading comes in first, then each block on
 the beat after the one before has landed; inside a block a word follows the last by half a beat.
 `type` and `karaoke` give each word its letters at `pace` (5.5 letters a word), half a beat more
@@ -120,6 +125,7 @@ frontmatter beats file beats the format's defaults.
 |:--|:--|--:|:--|
 | format | `--format` | wide | `wide` (16:9), `tall` (9:16) or `square` (1:1) |
 | preset | `--preset` | flip | how the words come in, see Motion; `rise` for tall and square |
+| heading-preset | `--heading-preset` | the preset | how the heading comes in, the text by `preset` |
 | safe | `--safe` | none | `phone` keeps the content clear of a phone app's bars, captions and buttons |
 | pad | `--pad` | none | `square` puts a tall film on a square canvas, see below |
 | fps | `--fps` | 10 | frames per second |
