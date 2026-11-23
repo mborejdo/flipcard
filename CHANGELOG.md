@@ -2,7 +2,7 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow semver.
 
-## Unreleased
+## 0.5.0 - 2026-11-23
 
 ### Added
 
@@ -43,7 +43,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
   showed. Every word stays where it is at rest on every frame (a test checks it per letter
   preset).
 - A highlighted run of words (`==Pending review==`) is one band without a seam: only its ends are
-  rounded.
+  rounded. A band grows from nothing, its padding too: no sliver at its start that read as a
+  caret.
+- `type`: the caret shows only while letters are typed, not while the marks draw after.
+- Dependencies: clap 4.6.9, toml 1.2.1, png 0.18.1, gif 0.14.2, color_quant 2.0.0,
+  rusty_h264 0.17.3/0.17.4, bytes 1.12.2.
 
 ## 0.4.0 - 2026-11-22
 
