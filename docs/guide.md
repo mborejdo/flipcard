@@ -135,6 +135,7 @@ frontmatter beats file beats the format's defaults.
 | safe | `--safe` | none | `phone` keeps the content clear of a phone app's bars, captions and buttons |
 | pad | `--pad` | none | `square` puts a tall film on a square canvas, see below |
 | fps | `--fps` | 10 | frames per second |
+| blur | `--blur` | 0 | motion blur: sub-frames a moving frame averages, 0 or 1 for none, up to 16 |
 | width | `--width` | 640 | pixels, even (the MP4 needs it); the height follows the format |
 | hold | `--hold` | 7 | seconds every scene stays at least, build-in included (motion: unset) |
 | enter | `--enter` | 1.6 | seconds of `flip` build-in at the start of every scene |
@@ -149,6 +150,13 @@ frontmatter beats file beats the format's defaults.
 and gif-fps 15: the MP4 is the film for the phone, the GIF a preview. `square` is the same at
 1080x1080 without the safe area. The card's content sits inside the safe area, centred; what
 doesn't fit there is an overflow, as on a wide card.
+
+`blur: 4` gives motion a 180° shutter: a frame in which something moves is the mean of 4
+sub-frames over the half frame up to it, so a fast word smears as a camera would see it. Frames
+at rest, and a scene's last frame (its still), stay sharp; the bytes are the same on every run.
+It costs as many draws per moving frame, and a blurred GIF has more in-between colours for its
+palette and its delta frames: it is off by default, for the GIF (a feed GIF is capped at 250
+frames and its palette is small) and the MP4 alike.
 
 `pad: square` (tall only) makes a square film of a tall one: the tall frame scaled to the full
 height as a panel in the middle, a 2 px edge in the theme's `border` colour left and right, and

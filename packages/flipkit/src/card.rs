@@ -57,24 +57,62 @@ pub(crate) struct Card {
     pub frames: usize,
     pub ticks: usize,
     pub hold: f32,
+    /// Frames per second of the film, and the sub-frames a moving frame averages (motion blur;
+    /// below 2 none).
+    fps: f64,
+    blur: usize,
 }
 
 impl Card {
-    /// Draw build-in frame `frame`.
+    /// Draw build-in frame `frame`; with motion blur a moving frame is the mean of its
+    /// sub-frames.
     pub(crate) fn draw(&self, engine: &Engine, frame: usize) -> Result<Frame> {
+        let shutter = self.shutter(frame);
+        if shutter.is_empty() {
+            return self.raster(engine, frame, None);
+        }
+        let subs = (shutter.iter())
+            .map(|state| self.raster(engine, frame, Some(state)))
+            .collect::<Result<Vec<_>>>()?;
+        Frame::mean(&subs).context("motion blur: sub-frames of different sizes")
+    }
+
+    /// Draw build-in frame `frame`, in `state` instead of its own when given.
+    fn raster(&self, engine: &Engine, frame: usize, state: Option<&str>) -> Result<Frame> {
         let number = frame.to_string();
+        let mut inputs = self.inputs(frame, &number);
+        if let Some(state) = state {
+            inputs.retain(|(key, _)| *key != "state");
+            inputs.push(("state", Input::Text(state)));
+        }
         let raster = engine
-            .raster(
-                Main::Source(CARD),
-                &self.inputs(frame, &number),
-                72.0 * SCALE,
-            )
+            .raster(Main::Source(CARD), &inputs, 72.0 * SCALE)
             .with_context(|| format!("slide {} ({})", self.slide + 1, self.title))?;
         Ok(Frame {
             width: raster.width,
             height: raster.height,
             rgb: raster.rgb,
         })
+    }
+
+    /// Motion blur: the states of `blur` sub-frames over the half frame up to build-in frame
+    /// `frame` (a 180° shutter), the frame's own first; none for a frame at rest, the last, or
+    /// without blur.
+    fn shutter(&self, frame: usize) -> Vec<String> {
+        let Some(timeline) = self.timeline.as_ref().filter(|_| self.blur > 1) else {
+            return Vec::new();
+        };
+        if frame + 1 >= self.frames {
+            return Vec::new();
+        }
+        let n = self.blur as f64;
+        let states: Vec<String> = (0..self.blur)
+            .map(|j| timeline.state((j as f64 / n).mul_add(-0.5, frame as f64) / self.fps))
+            .collect();
+        if states.iter().all(|s| *s == states[0]) {
+            return Vec::new();
+        }
+        states
     }
 
     /// Pages the fully built card takes, a tall one with a body line to spare; 1 when it fits.
@@ -371,6 +409,8 @@ impl<'a> Maker<'a> {
             frames,
             ticks,
             hold,
+            fps: f64::from(o.fps),
+            blur: o.blur,
         })
     }
 }
@@ -687,6 +727,39 @@ mod tests {
                 assert_eq!(card.spots(&engine).unwrap(), rest, "{name} {line}: {state}");
             }
         }
+    }
+
+    #[test]
+    fn motion_blur_averages_a_moving_frame_and_leaves_a_still_one() {
+        let (loaded, options) = tall("# Blur\n\nwords that rise\n");
+        let blurred = Options {
+            blur: 4,
+            ..options
+        };
+        let engine = deckmark::faces::engine(&[]).unwrap();
+        let mut maker = Maker::new(&loaded, &options).unwrap();
+        let (pages, _) = maker.paged(&engine).unwrap();
+        let sharp = maker.card(&pages[0], 0).unwrap();
+        let mut maker = Maker::new(&loaded, &blurred).unwrap();
+        let card = maker.card(&pages[0], 0).unwrap();
+        // a frame mid-rise: the mean of four sub-frames over the half frame up to it
+        let shutter = card.shutter(2);
+        assert_eq!(shutter.len(), 4);
+        assert_eq!(shutter[0], card.states[2]);
+        let subs: Vec<Frame> = (shutter.iter())
+            .map(|s| card.raster(&engine, 2, Some(s)).unwrap())
+            .collect();
+        let frame = card.draw(&engine, 2).unwrap();
+        assert_eq!(Some(&frame), Frame::mean(&subs).as_ref());
+        assert_ne!(frame, sharp.draw(&engine, 2).unwrap());
+        // the same bytes every time; the last frame (the still) and the first stay sharp
+        assert_eq!(frame, card.draw(&engine, 2).unwrap());
+        let last = card.frames - 1;
+        assert!(card.shutter(last).is_empty() && card.shutter(0).is_empty());
+        assert_eq!(
+            card.draw(&engine, last).unwrap(),
+            sharp.draw(&engine, last).unwrap()
+        );
     }
 
     #[test]

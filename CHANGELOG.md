@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 - Presets `wave` (the letters hop up and back in a ripple), `drop` (they fall into place one after
   the other, landing on a spring) and `decode` (each letter a scramble of its kind that settles
   from the left, the same on every run). `examples/letters` shows them.
+- `blur` (frontmatter, `[film]`, `--blur N`): motion blur, a moving frame the mean of N
+  sub-frames over the half frame up to it (a 180° shutter); frames at rest and every still stay
+  sharp. Off by default for GIF and MP4. filmstrip: `Frame::mean`.
 - `heading-preset` (frontmatter, `[film]`, `--heading-preset`, the same precedence as `preset`):
   the heading comes in by a preset of its own, the text by `preset` or the scene's. `preset: type`
   with `heading-preset: rise`: the heading rises with its bar, then the text is typed. Unset, as

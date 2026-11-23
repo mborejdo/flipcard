@@ -37,6 +37,8 @@ pub struct Settings {
     /// How the heading comes in, the rest by `preset` (the preset).
     #[serde(rename = "heading-preset")]
     pub heading_preset: Option<crate::Preset>,
+    /// Sub-frames a moving frame averages, motion blur; 0 or 1 none (none).
+    pub blur: Option<usize>,
     /// Seconds every scene stays at least (7 for flip).
     pub hold: Option<f32>,
     /// Seconds of build-in (1.6).
@@ -68,6 +70,7 @@ impl Settings {
             preset: self.preset.or(under.preset),
             heading_preset: self.heading_preset.or(under.heading_preset),
             fps: self.fps.or(under.fps),
+            blur: self.blur.or(under.blur),
             width: self.width.or(under.width),
             hold: self.hold.or(under.hold),
             enter: self.enter.or(under.enter),
@@ -81,7 +84,7 @@ impl Settings {
     }
 
     /// Read the film keys of a deck's frontmatter (`format`, `safe`, `pad`, `preset`,
-    /// `heading-preset`, `fps`,
+    /// `heading-preset`, `fps`, `blur`,
     /// `width`, `hold`, `enter`, `fade`, `transition`, `pace`, `colours`, `gif-width`, `gif-fps`);
     /// a value that is not a number, or not one of the key's names, is an error naming the key.
     pub fn from_frontmatter(get: impl Fn(&str) -> Option<String>) -> Result<Self> {
@@ -113,6 +116,7 @@ impl Settings {
                 .transpose()
                 .context("frontmatter")?,
             fps: number("fps", get("fps"))?,
+            blur: number("blur", get("blur"))?,
             width: number("width", get("width"))?,
             hold: number("hold", get("hold"))?,
             enter: number("enter", get("enter"))?,
@@ -271,6 +275,7 @@ impl fmt::Display for Config {
                 set.heading_preset.map(|v| v.name().to_string()),
             ),
             ("fps", set.fps.map(|v| v.to_string())),
+            ("blur", set.blur.map(|v| v.to_string())),
             ("width", set.width.map(|v| v.to_string())),
             ("hold", set.hold.map(|v| v.to_string())),
             ("enter", set.enter.map(|v| v.to_string())),

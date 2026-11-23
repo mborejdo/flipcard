@@ -62,6 +62,9 @@ pub struct Options {
     pub fps: u16,
     /// Width in pixels; the height follows the format. Even numbers only (the MP4 needs them).
     pub width: u32,
+    /// Sub-frames a moving frame of a motion card averages over half a frame (motion blur, a
+    /// 180° shutter): it costs as many draws; 0 or 1 is none, up to 16.
+    pub blur: usize,
     /// How the words come in, unless a scene says otherwise.
     pub preset: Preset,
     /// How the heading comes in; unset, as the words.
@@ -95,6 +98,7 @@ impl Default for Options {
             pad: Pad::None,
             fps: 10,
             width: 640,
+            blur: 0,
             preset: Preset::Flip,
             heading_preset: None,
             hold: None,
@@ -136,6 +140,7 @@ impl Options {
             pad,
             fps,
             width,
+            blur: set.blur.unwrap_or(base.blur),
             preset: set.preset.unwrap_or(base.preset),
             heading_preset: set.heading_preset,
             hold: set.hold,
@@ -252,6 +257,12 @@ pub fn render(loaded: &Loaded, options: &Options, outputs: Outputs) -> Result<Re
     }
     if options.fps == 0 || options.gif_fps == 0 || options.gif_width == 0 {
         bail!("film fps, gif-fps and gif-width must be at least 1");
+    }
+    if options.blur > 16 {
+        bail!(
+            "film blur must be 16 sub-frames or fewer, got {}",
+            options.blur
+        );
     }
     anyhow::ensure!(
         options.pad == Pad::None || options.format == Format::Tall,

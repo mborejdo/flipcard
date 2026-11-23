@@ -52,7 +52,7 @@ accent = "#2b2459"
 display = "Inter"         # headings, in the heaviest weight the family has
 
 [film]
-hold = 5                  # also format, safe, pad, preset, heading-preset, fps,
+hold = 5                  # also format, safe, pad, preset, heading-preset, fps, blur,
                           # width, enter, fade, transition, pace, colours,
                           # gif-width, gif-fps
 ```

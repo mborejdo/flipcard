@@ -80,6 +80,26 @@ impl Frame {
         }
     }
 
+    /// The mean of `frames`, every channel rounded to the nearest: motion blur from the
+    /// sub-frames of one frame. `None` for no frames or frames of different sizes.
+    #[must_use]
+    pub fn mean(frames: &[Self]) -> Option<Self> {
+        let first = frames.first()?;
+        if frames.iter().any(|f| {
+            (f.width, f.height, f.rgb.len()) != (first.width, first.height, first.rgb.len())
+        }) {
+            return None;
+        }
+        let n = frames.len() as u32;
+        let rgb = (0..first.rgb.len())
+            .map(|i| {
+                let sum: u32 = frames.iter().map(|f| u32::from(f.rgb[i])).sum();
+                ((sum + n / 2) / n) as u8
+            })
+            .collect();
+        Some(Self { rgb, ..*first })
+    }
+
     /// This frame `n` times smaller, every pixel the mean of an `n` x `n` block; the right and
     /// bottom remainder is dropped.
     #[must_use]
@@ -346,6 +366,19 @@ pub fn shots(scenes: &[(usize, usize, f32)], timing: Timing) -> Result<Vec<Shot>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_mean_of_frames_rounds_each_channel() {
+        let (a, b) = (
+            Frame::solid(2, 1, [0, 10, 255]),
+            Frame::solid(2, 1, [1, 20, 0]),
+        );
+        let mean = Frame::mean(&[a.clone(), b]).unwrap();
+        assert_eq!(mean.rgb, [1, 15, 128].repeat(2));
+        assert_eq!(Frame::mean(std::slice::from_ref(&a)), Some(a.clone()));
+        assert_eq!(Frame::mean(&[]), None);
+        assert_eq!(Frame::mean(&[a, Frame::solid(1, 1, [0; 3])]), None);
+    }
 
     #[test]
     fn a_build_in_then_a_hold_then_a_fade() {

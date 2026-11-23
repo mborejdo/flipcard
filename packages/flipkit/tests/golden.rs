@@ -1,5 +1,5 @@
 //! The films' bytes: SHA-256 of every file of the wide example, of a small tall render of the
-//! phone example, of its films padded square, of typed marks, of a heading that rises over typed text and of the letter presets, against `golden.sha256`. `FLIPCARD_BLESS=1` rewrites that file.
+//! phone example, of its films padded square, of typed marks, of a heading that rises over typed text and of the letter presets, sharp and blurred, against `golden.sha256`. `FLIPCARD_BLESS=1` rewrites that file.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -89,6 +89,17 @@ fn the_films_are_the_golden_bytes() {
     // the letter presets: typed, a wave, a drop, a decode
     files.extend(
         films("letters", "examples/letters/script.md", typed)
+            .unwrap()
+            .into_iter()
+            .filter(|(name, _)| !name.contains("/cards/")),
+    );
+    // the same with motion blur: four sub-frames a moving frame
+    let blurred = Settings {
+        blur: Some(4),
+        ..typed
+    };
+    files.extend(
+        films("blur", "examples/letters/script.md", blurred)
             .unwrap()
             .into_iter()
             .filter(|(name, _)| !name.contains("/cards/")),
