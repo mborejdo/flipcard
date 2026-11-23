@@ -2,8 +2,9 @@
 
 A Markdown deck in, a flip-card film out: every slide a card drawn by Typst, wide (16:9) or tall
 (9:16) for a phone, every key press (a `+` bullet, a lit `steps` node) a build-in of its own. On a
-phone the words come in on a beat: they rise, slide, fade or pop, metrics count up, a marker draws
-under the heading. Pure Rust, nothing started: no ffmpeg, no browser.
+phone the words come in on a beat: they rise, slide, fade or pop, or letter by letter: typed, in a
+wave, dropped on a spring or decoded from a scramble; metrics count up, a marker draws under the
+heading. Pure Rust, nothing started: no ffmpeg, no browser.
 
 flipcard writes GIF and MP4; other tools embed them.
 
@@ -33,7 +34,7 @@ flipcard config talk/slides.md                   # which flipcard.toml applies
 exit codes. [docs/guide.md](docs/guide.md): what each part of a deck becomes, the files, timing,
 fonts. [`examples/film`](examples/film) shows the build-ins: bullets, marked text, metrics, a
 stepped diagram, code; [`examples/phone`](examples/phone) a short tall film: the
-motion presets and every mark.
+motion presets and every mark; [`examples/letters`](examples/letters) the letter presets.
 
 ## Config
 
@@ -61,7 +62,8 @@ hold = 5                  # also format, safe, pad, preset, fps, width, enter, f
 - `flipkit` draws every slide at every build-in instant as a Typst card (`typ/film.typ`, in the
   deck's tokens) and times the scenes. With a motion preset Rust owns the time: the card is laid
   out once at rest, and per frame a small JSON of word looks moves, scales and fades the words
-  inside their boxes (`typ/motion.typ`), so nothing reflows. `move` and `stack` also ask Typst
+  inside their boxes (`typ/motion.typ`), so nothing reflows. A word is its letters: when they
+  differ (typed, a wave), each letter is drawn where the word's shaping puts it at rest. `move` and `stack` also ask Typst
   where each word is (its metadata) and time the words by that. Frames are drawn side by side on
   one Typst engine and stream to the GIF and MP4 encoders on threads of their own; a
   frame that stays is drawn once.

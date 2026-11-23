@@ -620,7 +620,8 @@ mod tests {
         card.states = vec![serde_json::json!({ "w": hidden }).to_string()];
         let blank = card.draw(&engine, 0).unwrap();
         for state in states.iter().step_by(3) {
-            // the letters only, no caret or marks: every pixel is the still's or the blank's
+            // the letters only (typed or not there yet), no caret or marks: every pixel is the
+            // still's or the blank's
             let mut state: Value = serde_json::from_str(state).unwrap();
             let at_rest = state.as_object_mut().unwrap();
             at_rest.remove("c");
@@ -628,7 +629,7 @@ mod tests {
             for look in state["w"].as_array_mut().unwrap() {
                 look.as_object_mut()
                     .unwrap()
-                    .retain(|key, _| key == "chars");
+                    .retain(|key, _| key == "l" || key == "o");
             }
             card.states = vec![state.to_string()];
             let frame = card.draw(&engine, 0).unwrap();
@@ -643,17 +644,21 @@ mod tests {
     }
 
     #[test]
-    fn the_caret_and_the_marks_never_move_a_typed_word() {
-        // a word typed to its end with the caret after it, marks sweeping under and behind it:
-        // every word's box stays where it is at rest, the same size, on every frame
-        for (format, line) in [
+    fn words_never_move_from_rest_while_their_letters_do() {
+        // a word typed to its end with the caret after it, letters rippling, marks sweeping
+        // under and behind them: every word's box stays where it is at rest, the same size, on
+        // every frame
+        let lines = [
             (Format::Square, "Solved. ==Pending review==."),
             (Format::Square, "Designs a __CPU__."),
             (Format::Square, "Biggest IPO ever."),
             (Format::Tall, "Tests: __deleted__."),
             (Format::Wide, "Proves ==Riemann==."),
-        ] {
-            let source = format!("# Also AI\n\n:::{{scene}} type\n:::\n\n{line}\n");
+        ];
+        let presets = [Preset::Type, Preset::Wave, Preset::Drop, Preset::Decode];
+        for ((format, line), preset) in lines.into_iter().zip(presets.into_iter().cycle()) {
+            let name = preset.name();
+            let source = format!("# Also AI\n\n:::{{scene}} {name}\n:::\n\n{line}\n");
             let loaded = Config::default().parse(&source, "test", Path::new("."));
             let flags = Settings {
                 format: Some(format),
@@ -669,11 +674,13 @@ mod tests {
             let mut card = maker.card(&pages[0], 0).unwrap();
             let rest = card.spots(&engine).unwrap();
             let states = std::mem::take(&mut card.states);
-            assert!(states.iter().any(|s| s.contains(r#""c":"#)), "{line}");
+            let caret = states.iter().any(|s| s.contains(r#""c":"#));
+            assert_eq!(caret, preset == Preset::Type, "{line}");
+            assert!(states.iter().any(|s| s.contains(r#""l":"#)), "{line}");
             card.frames = 1;
             for state in &states {
                 card.states = vec![state.clone()];
-                assert_eq!(card.spots(&engine).unwrap(), rest, "{line}: {state}");
+                assert_eq!(card.spots(&engine).unwrap(), rest, "{name} {line}: {state}");
             }
         }
     }

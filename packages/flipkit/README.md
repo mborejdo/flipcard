@@ -3,7 +3,8 @@
 A presiterm deck as a flip-card film: every slide a Typst card in the deck's tokens, wide (16:9),
 tall (9:16) or square, every key press a build-in; the frames stream to `filmstrip`, which writes
 GIF and MP4. Words come in by a preset: `flip` (the card build-in), or `rise`,
-`slide`, `fade`, `pop`, `still`, `type`, `karaoke`, `move`, `stack` on a beat, with Rust timing every word and Typst drawing it.
+`slide`, `fade`, `pop`, `still`, `type`, `karaoke`, `move`, `stack`, `wave`, `drop`, `decode` on a
+beat, with Rust timing every word (and its letters) and Typst drawing it.
 
 ```rust,no_run
 use std::path::Path;

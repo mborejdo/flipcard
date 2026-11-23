@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use colonmark::Kind;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::motion::{Cue, Preset};
 
@@ -94,9 +95,15 @@ pub(crate) struct Word {
 }
 
 impl Word {
-    /// Its letters, the tail's included.
+    /// Its letters, the tail's included: grapheme clusters, as Typst's `str.clusters()` cuts them.
+    pub(crate) fn graphemes(&self) -> Vec<&str> {
+        let (text, tail) = (&self.run.text, &self.tail);
+        text.graphemes(true).chain(tail.graphemes(true)).collect()
+    }
+
+    /// How many letters it has, the tail's included.
     pub(crate) fn letters(&self) -> usize {
-        self.run.text.chars().count() + self.tail.chars().count()
+        self.graphemes().len()
     }
 }
 

@@ -24,7 +24,8 @@ Examples:
   flipcard talk/slides.md --format tall --pad square --mp4
                                                 a 1080x1080 film: the tall card as a panel on a blurred copy
   flipcard talk/slides.md --format tall --preset slide
-                                                words in from the left: rise, slide, fade, pop, still, type, karaoke, move, stack, flip
+                                                words in from the left: rise, slide, fade, pop, still, type, karaoke, move, stack,
+                                                wave, drop, decode, flip
   flipcard lint talk/slides.md                  does every card fit
   flipcard config talk/slides.md                which flipcard.toml applies, and its values
 
@@ -106,7 +107,8 @@ pub(crate) struct FilmArgs {
     /// over a blurred copy of itself, the safe area then none (--pad square) [default: none].
     #[arg(long, value_name = "NAME")]
     pub(crate) pad: Option<flipkit::Pad>,
-    /// How the words come in: flip, rise, slide, fade, pop, still, type, karaoke, move or stack;
+    /// How the words come in: flip, rise, slide, fade, pop, still, type, karaoke, move, stack,
+    /// wave, drop or decode;
     /// a scene sets its own with `:::{scene} pop` [default: flip, rise for tall and square].
     #[arg(long, value_name = "NAME")]
     pub(crate) preset: Option<flipkit::Preset>,

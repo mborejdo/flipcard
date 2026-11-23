@@ -28,6 +28,7 @@ serde_json.workspace = true
 swatchbook.workspace = true
 toml.workspace = true
 typstkit = { workspace = true, default-features = false, features = ["packages"] }
+unicode-segmentation.workspace = true
 
 [dev-dependencies]
 sha2.workspace = true

@@ -52,10 +52,13 @@ for the film, `:::{scene}` for one slide:
 | `fade` | block by block, fading in |
 | `pop` | word by word, scaled up past their size and back |
 | `still` | all there at once |
-| `type` | letter by letter at `pace`, an accent caret blinking on the beat |
+| `type` | letter by letter at `pace`, an accent caret blinking on the beat after the last letter typed |
 | `karaoke` | all there in muted, each word filled with ink as it is read at `pace` |
 | `move` | magic move: a word the scene before shows too glides from there, at its size then; the others fade out in the transition and rise in after |
 | `stack` | line by line from below, each read at `pace`; the lines in so far move up to make room |
+| `wave` | word by word, the letters hopping up and back in a ripple as they fade in |
+| `drop` | word by word, the letters falling into place one after the other, landing on a spring |
+| `decode` | word by word, each letter a scramble of its kind (a capital, a small letter, a digit) that settles from the left |
 
 Time runs in beats (0.4 s, `:beat:` changes it). The heading comes in first, then each block on
 the beat after the one before has landed; inside a block a word follows the last by half a beat.
@@ -64,6 +67,12 @@ after `, ; :` and a beat after `. ! ?`. `//` between words waits one more beat a
 scene then holds for its words read at `pace` (after `type`, `karaoke` and `stack`: they were read
 coming in), at least four beats after its last mark, count or bar has finished; `hold` is the
 floor when set. `enter` is for `flip` only.
+
+A word is its letters (grapheme clusters, as Typst cuts them). Most presets move a word as one;
+`type` reveals its letters, and `wave`, `drop` and `decode` start each letter about a quarter beat after
+the one before. Every letter is drawn where the word's shaping puts it at rest, kerning kept, so
+a word never moves or reflows while its letters do. `decode` is the same on every run: its
+stand-ins come from the word's place, not from chance.
 
 `move` and `stack` lay the card out once more to find where the words are. `move` matches words
 by their text, each to the first unused one of the scene before; the glide takes a beat and a

@@ -48,4 +48,5 @@ jobs:
           cargo run --locked -p flipcard -- lint examples/film/slides.md
           cargo run --locked -p flipcard -- examples/film/slides.md --gif --mp4 --cards target/demo/cards --out target/demo
           cargo run --locked -p flipcard -- lint examples/phone/script.md
+          cargo run --locked -p flipcard -- lint examples/letters/script.md
 

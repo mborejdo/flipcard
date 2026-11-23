@@ -12,11 +12,11 @@
 
 use serde_json::json;
 
+use super::look::shape;
+use super::preset::ENTER;
 use super::{Curve, Look, Preset, Spot, count};
 use crate::script::Word;
 
-/// Half-beats a word takes to come in, and a bold word to pulse.
-const ENTER: f64 = 2.0;
 /// Half-beats a run of marked words takes to draw, left to right as one sweep.
 const MARK: f64 = 3.5;
 /// Half-beats a mark waits after the last word it needs has landed.
@@ -244,7 +244,7 @@ impl Timeline {
             let len = match &cue.value {
                 Some(_) => COUNT,
                 None if preset.paced() => (cue.word.letters() + 1) as f64 * letter,
-                None => ENTER,
+                None => preset.enter(cue.word.letters()),
             };
             starts[i] = Some((t, len));
             landed = landed.max(t + len);
@@ -354,6 +354,7 @@ impl Timeline {
             })
             .sum();
         let (mut values, mut bars) = (Vec::new(), Vec::new());
+        let mut caret = None;
         let looks: Vec<_> = self
             .cues
             .iter()
@@ -361,6 +362,7 @@ impl Timeline {
             .enumerate()
             .map(|(i, (cue, &start))| {
                 let (at, len) = start.map_or((None, 1.0), |(s, l)| (Some(s), l));
+                let mut letters = Vec::new();
                 let mut look = match (&cue.value, cue.from) {
                     (Some(value), _) => {
                         values.push(count(value, Curve::Ease.at(p(at, COUNT))));
@@ -371,10 +373,21 @@ impl Timeline {
                             1.0 - Curve::Ease.at(p(at.map(|a| BAR.mul_add(0.5, a)), FLASH)),
                             0.0,
                         ));
-                        Preset::Rise.look(p(at, ENTER), 1)
+                        Preset::Rise.look(p(at, ENTER))
                     },
                     (None, Some(from)) => from.toward(Curve::Ease.at(p(at, len))),
-                    (None, None) => self.preset.look(p(at, len), cue.word.letters()),
+                    (None, None) => {
+                        let graphemes = cue.word.graphemes();
+                        let q = p(at, len);
+                        // the caret sits after the letters typed so far of the word typed last
+                        if self.preset == Preset::Type && at.is_some_and(|a| a <= now) {
+                            caret = Some((cue.word.id, Preset::typed(q, graphemes.len())));
+                        }
+                        let word;
+                        (word, letters) =
+                            shape(self.preset.letters(q, &graphemes, cue.word.id as u64));
+                        word
+                    },
                 };
                 if let Some(spot) = cue.spot.filter(|_| at.is_some()) {
                     look.y += sink / spot.size;
@@ -411,7 +424,11 @@ impl Timeline {
                 if cue.block == 0 && self.marked {
                     look.draw = draw;
                 }
-                look.json()
+                let mut json = look.json();
+                if !letters.is_empty() {
+                    json["l"] = letters.into_iter().map(Look::json).collect();
+                }
+                json
             })
             .collect();
         let mut state = json!({ "w": looks, "n": values });
@@ -426,13 +443,9 @@ impl Timeline {
         if self.marked && !bar.is_empty() {
             state["bar"] = bar.into();
         }
-        if self.preset == Preset::Type && now < self.end && (now / 2.0).floor() % 2.0 == 0.0 {
-            // the caret blinks a beat on, a beat off, after the word typed last
-            let typed = self
-                .starts
-                .iter()
-                .rposition(|s| s.is_some_and(|(s, _)| s <= now));
-            state["c"] = typed.into();
+        if let Some(caret) = caret.filter(|_| now < self.end && (now / 2.0).floor() % 2.0 == 0.0) {
+            // the caret blinks a beat on, a beat off: its word, and the letters before it
+            state["c"] = json!([caret.0, caret.1]);
         }
         state.to_string()
     }
@@ -642,14 +655,29 @@ mod tests {
 
     #[test]
     fn the_caret_blinks_on_the_beat_grid_and_is_gone_at_rest() {
-        let cues: Vec<Cue> = (0..30).map(|_| cue(1, "word")).collect();
+        let mut cues: Vec<Cue> = (0..30).map(|_| cue(1, "word")).collect();
+        for (i, cue) in cues.iter_mut().enumerate() {
+            cue.word.id = i;
+        }
         let timeline = Timeline::new(Preset::Type, 0.4, 200.0, 0, cues, false);
         let caret = |t: f64| timeline.state(t).contains(r#""c":"#);
         assert!(caret(0.0) && caret(0.39) && !caret(0.4) && !caret(0.79) && caret(0.8));
-        // a word of 4 letters and its space at 200 wpm: 0.27 s
-        assert!(
-            timeline.state(0.1).contains(r#""c":0"#) && timeline.state(0.3).contains(r#""c":1"#)
+        // a word of 4 letters and its space at 200 wpm: 0.27 s; the caret after the letters
+        // typed so far, of the word typed last
+        let at = |t: f64| -> serde_json::Value {
+            serde_json::from_str::<serde_json::Value>(&timeline.state(t)).unwrap()["c"].clone()
+        };
+        assert_eq!(
+            (at(0.0), at(0.1), at(0.3)),
+            (json!([0, 0]), json!([0, 1]), json!([1, 0]))
         );
+        // the typed letters are at rest, the others not there yet
+        let state: serde_json::Value = serde_json::from_str(&timeline.state(0.1)).unwrap();
+        assert_eq!(
+            state["w"][0],
+            json!({ "l": [{}, { "o": 0.0 }, { "o": 0.0 }, { "o": 0.0 }] })
+        );
+        assert_eq!(state["w"][1], json!({ "o": 0.0 }));
         assert!(!caret(timeline.entrances()));
         let rose = rise(words(&[1, 1]));
         assert!(!rose.state(0.0).contains(r#""c":"#));

@@ -30,7 +30,8 @@ pub struct Settings {
     pub width: Option<u32>,
     /// What a tall film is placed on: none or square (none).
     pub pad: Option<crate::Pad>,
-    /// How the words come in: flip, rise, slide, fade, pop, still, type, karaoke, move or stack
+    /// How the words come in: flip, rise, slide, fade, pop, still, type, karaoke, move, stack,
+    /// wave, drop or decode
     /// (flip; rise for tall and square).
     pub preset: Option<crate::Preset>,
     /// Seconds every scene stays at least (7 for flip).

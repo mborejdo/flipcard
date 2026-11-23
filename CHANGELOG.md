@@ -2,6 +2,32 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow semver.
 
+## Unreleased
+
+### Added
+
+- Presets `wave` (the letters hop up and back in a ripple), `drop` (they fall into place one after
+  the other, landing on a spring) and `decode` (each letter a scramble of its kind that settles
+  from the left, the same on every run). `examples/letters` shows them.
+
+### Changed
+
+- A word is its letters (grapheme clusters, as Typst cuts them): the per-frame look of a word
+  carries a look per letter (`l`) while they differ; letters alike move the word as one, so every
+  other preset draws as before, byte for byte.
+- `type` reveals the letters of a word laid out once at rest with its full text, each where the
+  word's shaping puts it (kerning kept); the caret is placed after the letters typed so far
+  (`c`: word and letters), outside the flow, and shows on a word not begun yet too.
+
+### Fixed
+
+- `type`: the caret no longer drops onto a line of its own at a word's end, which made the word's
+  box a line taller: the marks were drawn a line lower and the block jumped up while the caret
+  showed. Every word stays where it is at rest on every frame (a test checks it per letter
+  preset).
+- A highlighted run of words (`==Pending review==`) is one band without a seam: only its ends are
+  rounded.
+
 ## 0.4.0 - 2026-11-22
 
 ### Added

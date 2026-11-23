@@ -789,6 +789,7 @@ dependencies = [
  "tempfile",
  "toml 1.2.0+spec-1.1.0",
  "typstkit",
+ "unicode-segmentation",
 ]
 
 [[package]]
