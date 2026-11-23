@@ -1,7 +1,8 @@
 // Motion, ahead of film.typ: one word at one instant. sys.inputs.state (JSON) holds a look per
 // word id (o opacity, x and y offset in em, s scale, draw how far its mark is drawn, fill how far
-// ink has filled it from muted, tint toward its mark's colour; a missing field is at rest) and,
-// while its letters differ, a look per letter (l: o, x, y, s, g a letter drawn in its place), the
+// ink has filled it from muted, tint toward its mark's colour, rot rotation in degrees, track
+// tracking in em, hue toward the accent; a missing field is at rest) and, while its letters
+// differ, a look per letter (l: o, x, y, s, rot, hue, g a letter drawn in its place), the
 // counted metric values (n), their bars while one draws (m: draw, hot, by value), where the caret
 // is (c: word id, letters before it) and the tall heading's bar (bar: draw, hot, dy in points);
 // film.typ draws the bars.
@@ -24,7 +25,7 @@
 // its word.
 #let word(w, body, tail: "", final: none, glyph: none, heading: false, dot: false) = context {
   let look = motion.at("w", default: ()).at(w.id, default: (:))
-  let (o, x, y, s, draw, fill, tint) = ("o", "x", "y", "s", "draw", "fill", "tint").zip((1, 0, 0, 1, 1, 1, 1)).map(((k, d)) => look.at(k, default: d))
+  let (o, x, y, s, draw, fill, tint, rot, track, hue) = ("o", "x", "y", "s", "draw", "fill", "tint", "rot", "track", "hue").zip((1, 0, 0, 1, 1, 1, 1, 0, 0, 0)).map(((k, d)) => look.at(k, default: d))
   let letters = look.at("l", default: none)
   // a list marker moves with its word's first letter
   if dot and letters != none {
@@ -55,6 +56,9 @@
   let ink = if target == none or tint == 0 { text.fill } else if tint >= 1 { target } else {
     color.mix((text.fill, (1 - tint) * 100%), (target, tint * 100%))
   }
+  // `h` (0 to 1) of the way to the accent
+  let toward(c, h) = if h <= 0 { c } else { color.mix((c, (1 - h) * 100%), (motion-accent, h * 100%)) }
+  let ink = toward(ink, hue)
   let alpha(c, o: o) = if o < 1 { c.transparentize((1 - o) * 100%) } else { c }
   // karaoke: ink from the left over muted, a hard edge at `fill`
   let paint = if dot or fill >= 1 { alpha(ink) } else if fill <= 0 { motion-muted } else {
@@ -62,6 +66,7 @@
   }
   let line-at(dy, stroke) = place(left + bottom, dy: dy, line(length: marked * draw, stroke: stroke))
   let plain = if fill < 1 { paint } else { alpha(text.fill) }
+  let letters = if letters == none and track != 0 { () } else { letters }
   let glyphs-at-rest = if letters == none or glyphs.len() == 0 {
     box(text(fill: paint, body) + text(fill: plain, tail))
   } else {
@@ -73,14 +78,18 @@
         let l = letters.at(i, default: (:))
         let lo = o * l.at("o", default: 1)
         if lo > 0 {
-          let at = measure(upto(i + 1)).width - measure(g).width
+          // tracked: spread about the word's middle
+          let at = measure(upto(i + 1)).width - measure(g).width + (i - (glyphs.len() - 1) / 2) * track * 1em
           // a stand-in sits centred on the letter it stands in for
           let (at, g) = if "g" in l {
             let by = if i < body-letters { glyph(l.g) } else { text(l.g) }
             (at + (measure(g).width - measure(by).width) / 2, by)
           } else { (at, g) }
-          let fill = if i < body-letters { if fill >= 1 { alpha(ink, o: lo) } else { paint } } else { alpha(text.fill, o: lo) }
-          place(left + bottom, dx: at, move(dx: l.at("x", default: 0) * 1em, dy: l.at("y", default: 0) * 1em, scale(l.at("s", default: 1) * 100%, text(fill: fill, g))))
+          let lh = l.at("hue", default: 0)
+          let fill = if i < body-letters { if fill >= 1 { alpha(toward(ink, lh), o: lo) } else { paint } } else { alpha(toward(text.fill, lh), o: lo) }
+          let drawn = scale(l.at("s", default: 1) * 100%, text(fill: fill, g))
+          let lr = l.at("rot", default: 0)
+          place(left + bottom, dx: at, move(dx: l.at("x", default: 0) * 1em, dy: l.at("y", default: 0) * 1em, if lr == 0 { drawn } else { rotate(lr * 1deg, drawn) }))
         }
       }
     })
@@ -100,7 +109,8 @@
         }
       }
       if draw > 0 and mark("underline") { line-at(0.2em, 0.09em + alpha(motion-accent)) }
-      scale(s * 100%, glyphs-at-rest)
+      let glyphs = scale(s * 100%, glyphs-at-rest)
+      if rot == 0 { glyphs } else { rotate(rot * 1deg, glyphs) }
       caret
       if draw > 0 and mark("strike") { line-at(-0.3em, 0.08em + alpha(motion-muted)) }
     }))

@@ -23,6 +23,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
   critically and over-damped, set by response and damping fraction as SwiftUI does), carrying
   their momentum into the next line's move instead of each line's ease adding up on its own. A
   stacked scene rests a little later, once its spring has. `drop` lands on the same physics.
+- Three more look channels, at rest by default (every other preset draws as before): `rot`
+  (rotation in degrees, a word's or a letter's), `track` (a word's tracking in em, its letters
+  spread about its middle inside its box, nothing reflows) and `hue` (toward the accent, a word's
+  or a letter's). `drop` letters fall tilted and are righted by their spring; `decode` stand-ins
+  are in the accent and the letters close up as they settle.
 - The bounce curve of `slide` and the bold pulse is named `Bounce`, its bytes unchanged.
 - A word is its letters (grapheme clusters, as Typst cuts them): the per-frame look of a word
   carries a look per letter (`l`) while they differ; letters alike move the word as one, so every

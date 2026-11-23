@@ -73,6 +73,11 @@ scene then holds for its words read at `pace` (after `type`, `karaoke` and `stac
 coming in), at least four beats after its last mark, count or bar has finished; `hold` is the
 floor when set. `enter` is for `flip` only.
 
+A word or a letter looks a certain way at each frame: where it is, its size, its opacity, its
+rotation, its colour toward the accent and, for a word, its tracking (its letters spread apart
+inside its box). `drop` letters fall tilted and are righted by their spring; `decode` stand-ins
+are in the accent, the letters closing up as they settle.
+
 A word is its letters (grapheme clusters, as Typst cuts them). Most presets move a word as one;
 `type` reveals its letters, and `wave`, `drop` and `decode` start each letter about a quarter beat after
 the one before. Every letter is drawn where the word's shaping puts it at rest, kerning kept, so

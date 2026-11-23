@@ -121,23 +121,34 @@ impl Preset {
                 })
                 .collect(),
             Self::Drop => (0..n)
-                .map(|i| Look {
-                    o: Curve::Linear.at(3.0 * q(i)),
-                    y: -0.9 * (1.0 - DROP.ease(q(i))),
-                    ..rest
+                .map(|i| {
+                    // falling tilted, every other letter the other way, righted by the spring
+                    let off = 1.0 - DROP.ease(q(i));
+                    Look {
+                        o: Curve::Linear.at(3.0 * q(i)),
+                        y: -0.9 * off,
+                        rot: if i % 2 == 0 { -14.0 } else { 14.0 } * off,
+                        ..rest
+                    }
                 })
                 .collect(),
             Self::Decode => (0..n)
-                .map(|i| Look {
-                    // all there after half a beat, each a stand-in till its turn
-                    o: Curve::Linear.at(t),
-                    g: (q(i) < 1.0)
+                .map(|i| {
+                    // all there after half a beat, spread apart, each a stand-in in the accent
+                    // till its turn; the letters close up as they settle
+                    let tick = (t * 2.0).floor() as u64;
+                    let stand_in = (q(i) < 1.0)
                         .then(|| {
-                            let tick = (t * 2.0).floor() as u64;
                             scramble(letters.get(i)?, mix(seed ^ mix((i as u64) << 32 | tick)))
                         })
-                        .flatten(),
-                    ..rest
+                        .flatten();
+                    Look {
+                        o: Curve::Linear.at(t),
+                        track: 0.3 * (1.0 - Curve::Ease.at(p)),
+                        hue: if stand_in.is_some() { 1.0 } else { 0.0 },
+                        g: stand_in,
+                        ..rest
+                    }
                 })
                 .collect(),
             _ => vec![self.look(p); n],
@@ -342,6 +353,9 @@ mod tests {
         assert!(hop[0].y < 0.0 && hop[0].y < hop[4].y);
         let fall = |p: f64| Preset::Drop.letters(p, &WORD, 0)[0].y;
         assert!(fall(0.0) < -0.8 && (0..100).any(|k| fall(f64::from(k) / 100.0) > 0.0));
+        // tilted as they fall, every other letter the other way
+        let tilt = Preset::Drop.letters(0.0, &WORD, 0);
+        assert!(tilt[0].rot < -10.0 && tilt[1].rot > 10.0);
     }
 
     #[test]
@@ -357,6 +371,9 @@ mod tests {
         // later on, the first letter has settled before the last
         let late = at(0.8);
         assert!(late[0].g.is_none() && late[2].g.is_some());
+        // a stand-in is in the accent; the letters spread at first, closing up
+        assert_eq!((first[0].hue, first[3].hue), (1.0, 0.0));
+        assert!(first[0].track > 0.2 && late[0].track < first[0].track);
         // another word scrambles otherwise
         let other = Preset::Decode.letters(0.1, &word, 43);
         assert_ne!(first, other);

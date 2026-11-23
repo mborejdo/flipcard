@@ -19,6 +19,13 @@ pub(crate) struct Look {
     pub fill: f64,
     /// How far its colour has turned to its mark's (bold: the accent, struck: muted), 0 to 1.
     pub tint: f64,
+    /// Rotation in degrees, clockwise, about its middle.
+    pub rot: f64,
+    /// Tracking in em: a word's letters this far apart beyond their spacing, spread about its
+    /// middle (a word's only; its letters share it).
+    pub track: f64,
+    /// How far its colour has turned to the accent, 0 to 1.
+    pub hue: f64,
     /// A letter drawn in its place (`decode`).
     pub g: Option<char>,
 }
@@ -33,6 +40,9 @@ impl Default for Look {
             draw: 1.0,
             fill: 1.0,
             tint: 1.0,
+            rot: 0.0,
+            track: 0.0,
+            hue: 0.0,
             g: None,
         }
     }
@@ -60,6 +70,9 @@ impl Look {
             ("draw", self.draw, rest.draw),
             ("fill", self.fill, rest.fill),
             ("tint", self.tint, rest.tint),
+            ("rot", self.rot, rest.rot),
+            ("track", self.track, rest.track),
+            ("hue", self.hue, rest.hue),
         ];
         let mut map = Map::new();
         for (key, value, default) in fields {
@@ -76,11 +89,22 @@ impl Look {
 }
 
 /// A word's letters as one look when they are alike (the word moves as one, as a word look
-/// does), else each its own: `(word, letters)`, the letters empty when they are alike.
+/// does), else each its own and the word their tracking: `(word, letters)`, the letters empty
+/// when they are alike.
 pub(crate) fn shape(letters: Vec<Look>) -> (Look, Vec<Look>) {
     match letters.split_first() {
         Some((first, rest)) if rest.iter().all(|l| l == first) => (*first, Vec::new()),
-        Some(_) => (Look::default(), letters),
+        Some((first, _)) => {
+            let word = Look {
+                track: first.track,
+                ..Look::default()
+            };
+            let letters = letters
+                .into_iter()
+                .map(|l| Look { track: 0.0, ..l })
+                .collect();
+            (word, letters)
+        },
         None => (Look::default(), Vec::new()),
     }
 }
@@ -92,6 +116,16 @@ mod tests {
     #[test]
     fn a_look_at_rest_is_empty_and_values_are_rounded() {
         assert_eq!(Look::default().json().to_string(), "{}");
+        let channels = Look {
+            rot: -12.0,
+            track: 0.25,
+            hue: 0.5,
+            ..Look::default()
+        };
+        assert_eq!(
+            channels.json().to_string(),
+            r#"{"hue":0.5,"rot":-12.0,"track":0.25}"#
+        );
         let look = Look {
             o: 0.123_456,
             y: 0.999_99,
@@ -111,6 +145,17 @@ mod tests {
         assert_eq!(shape(vec![faded; 3]), (faded, vec![]));
         let typed = vec![Look::default(), faded];
         assert_eq!(shape(typed.clone()), (Look::default(), typed));
+        // the tracking is the word's
+        let spread = |o| Look {
+            o,
+            track: 0.2,
+            ..Look::default()
+        };
+        let (word, letters) = shape(vec![spread(1.0), spread(0.5)]);
+        assert_eq!(
+            (word.track, letters[0].track, letters[1].o),
+            (0.2, 0.0, 0.5)
+        );
         assert_eq!(shape(vec![]), (Look::default(), vec![]));
     }
 }
