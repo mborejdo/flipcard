@@ -398,7 +398,8 @@ impl Timeline {
             STACK.follow(from, &moves, now).0
         };
         let (mut values, mut bars) = (Vec::new(), Vec::new());
-        let mut caret = None;
+        // the caret, and the half-beat the last typed word is typed to its end
+        let (mut caret, mut typing) = (None, 0.0_f64);
         let looks: Vec<_> = self
             .cues
             .iter()
@@ -425,8 +426,13 @@ impl Timeline {
                         let q = p(at, len);
                         // the caret sits after the letters typed so far of the word typed last
                         let preset = self.of(cue);
-                        if preset == Preset::Type && at.is_some_and(|a| a <= now) {
-                            caret = Some((cue.word.id, Preset::typed(q, graphemes.len())));
+                        if preset == Preset::Type
+                            && let Some(a) = at
+                        {
+                            typing = typing.max(a + len);
+                            if a <= now {
+                                caret = Some((cue.word.id, Preset::typed(q, graphemes.len())));
+                            }
                         }
                         let word;
                         (word, letters) = shape(preset.letters(q, &graphemes, cue.word.id as u64));
@@ -487,8 +493,9 @@ impl Timeline {
         if self.marked && !bar.is_empty() {
             state["bar"] = bar.into();
         }
-        if let Some(caret) = caret.filter(|_| now < self.end && (now / 2.0).floor() % 2.0 == 0.0) {
-            // the caret blinks a beat on, a beat off: its word, and the letters before it
+        if let Some(caret) = caret.filter(|_| now < typing && (now / 2.0).floor() % 2.0 == 0.0) {
+            // the caret blinks a beat on, a beat off while letters are typed: its word, and the
+            // letters before it; gone once the last word is typed, as its marks draw
             state["c"] = json!([caret.0, caret.1]);
         }
         state.to_string()
@@ -723,6 +730,17 @@ mod tests {
         );
         assert_eq!(state["w"][1], json!({ "o": 0.0 }));
         assert!(!caret(timeline.entrances()));
+        // typed to its end, a mark still drawing: no caret
+        let mut marked = vec![cue(1, "one"), cue(1, "two")];
+        marked[1].word.id = 1;
+        marked[1].word.run.highlight = true;
+        let timeline = Timeline::new(Preset::Type, 0.4, 200.0, 0, marked, false);
+        let typed = timeline.starts[1].map(|(s, l)| s + l).unwrap();
+        assert!(timeline.end > typed + 2.0);
+        for k in 0..20 {
+            let t = f64::from(k).mul_add(0.1, typed) * 0.2;
+            assert!(!timeline.state(t).contains(r#""c":"#), "{t}");
+        }
         let rose = rise(words(&[1, 1]));
         assert!(!rose.state(0.0).contains(r#""c":"#));
     }

@@ -105,7 +105,8 @@
           let (lpad, rpad) = (if from { 0em } else { 0.08em }, if on { 0em } else { 0.08em })
           let (l, r) = (if from { 0em } else { 0.12em }, if on { 0em } else { 0.12em })
           let radius = (top-left: l, bottom-left: l, top-right: r, bottom-right: r)
-          place(left + bottom, dx: -lpad, dy: 0.22em, rect(width: marked * draw + lpad + rpad, height: 1.05em, radius: radius, fill: motion-accent.transparentize(70%)))
+          // the band grows from nothing, its padding too: no sliver at its start
+          place(left + bottom, dx: -lpad, dy: 0.22em, rect(width: (marked + lpad + rpad) * draw, height: 1.05em, radius: radius, fill: motion-accent.transparentize(70%)))
         }
       }
       if draw > 0 and mark("underline") { line-at(0.2em, 0.09em + alpha(motion-accent)) }
