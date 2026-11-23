@@ -16,6 +16,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ### Changed
 
+- `stack`: the lines move up on a damped spring (`motion/spring.rs`: closed form for under-,
+  critically and over-damped, set by response and damping fraction as SwiftUI does), carrying
+  their momentum into the next line's move instead of each line's ease adding up on its own. A
+  stacked scene rests a little later, once its spring has. `drop` lands on the same physics.
+- The bounce curve of `slide` and the bold pulse is named `Bounce`, its bytes unchanged.
 - A word is its letters (grapheme clusters, as Typst cuts them): the per-frame look of a word
   carries a look per letter (`l`) while they differ; letters alike move the word as one, so every
   other preset draws as before, byte for byte.

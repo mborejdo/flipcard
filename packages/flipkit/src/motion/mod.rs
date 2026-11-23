@@ -7,6 +7,7 @@ mod ease;
 mod look;
 mod preset;
 mod spot;
+mod spring;
 mod timeline;
 
 pub(crate) use count::count;

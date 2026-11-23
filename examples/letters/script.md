@@ -36,3 +36,14 @@ Letters fall into place.
 :::
 
 Signal from noise, 2026.
+
+---
+
+# On a spring
+
+:::{scene} stack
+:::
+
+Lines come up.
+The rest make room.
+Nothing jerks.

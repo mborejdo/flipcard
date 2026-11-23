@@ -11,8 +11,9 @@ pub(crate) enum Curve {
     Ease,
     /// Past the end and back (peak about 1.10).
     Back,
-    /// A damped bounce (first peak about 1.09).
-    Spring,
+    /// A damped bounce (first peak about 1.09): a shape, not physics; it keeps `slide` and the
+    /// bold pulse as they were. A [`Spring`](super::Spring) is the physical one.
+    Bounce,
 }
 
 impl Curve {
@@ -31,7 +32,7 @@ impl Curve {
                 let (c, u) = (1.701_58_f64, x - 1.0);
                 (c + 1.0).mul_add(u * u * u, c * u * u) + 1.0
             },
-            Self::Spring => libm::exp(-6.9 * x).mul_add(-libm::cos(2.5 * PI * x), 1.0),
+            Self::Bounce => libm::exp(-6.9 * x).mul_add(-libm::cos(2.5 * PI * x), 1.0),
         }
     }
 }
@@ -40,7 +41,7 @@ impl Curve {
 mod tests {
     use super::*;
 
-    const ALL: [Curve; 4] = [Curve::Linear, Curve::Ease, Curve::Back, Curve::Spring];
+    const ALL: [Curve; 4] = [Curve::Linear, Curve::Ease, Curve::Back, Curve::Bounce];
 
     fn samples(curve: Curve) -> Vec<f64> {
         (0..=1000)
@@ -57,7 +58,7 @@ mod tests {
     }
 
     #[test]
-    fn ease_only_rises_back_and_spring_overshoot() {
+    fn ease_only_rises_back_and_bounce_overshoot() {
         assert!(samples(Curve::Ease).windows(2).all(|w| w[1] >= w[0]));
         let peak = |curve| samples(curve).into_iter().fold(0.0, f64::max);
         assert!(
@@ -66,9 +67,9 @@ mod tests {
             peak(Curve::Back)
         );
         assert!(
-            (peak(Curve::Spring) - 1.09).abs() < 0.01,
+            (peak(Curve::Bounce) - 1.09).abs() < 0.01,
             "{}",
-            peak(Curve::Spring)
+            peak(Curve::Bounce)
         );
     }
 }

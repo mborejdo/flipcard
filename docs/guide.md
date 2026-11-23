@@ -57,7 +57,7 @@ for the film, `:::{scene}` for one slide:
 | `move` | magic move: a word the scene before shows too glides from there, at its size then; the others fade out in the transition and rise in after |
 | `stack` | line by line from below, each read at `pace`; the lines in so far move up to make room |
 | `wave` | word by word, the letters hopping up and back in a ripple as they fade in |
-| `drop` | word by word, the letters falling into place one after the other, landing on a spring |
+| `drop` | word by word, the letters falling into place one after the other, landing on a spring that bounces once |
 | `decode` | word by word, each letter a scramble of its kind (a capital, a small letter, a digit) that settles from the left |
 
 `heading-preset` (frontmatter, `[film]` or `--heading-preset`, the same precedence) brings the
@@ -78,6 +78,12 @@ A word is its letters (grapheme clusters, as Typst cuts them). Most presets move
 the one before. Every letter is drawn where the word's shaping puts it at rest, kerning kept, so
 a word never moves or reflows while its letters do. `decode` is the same on every run: its
 stand-ins come from the word's place, not from chance.
+
+`drop` and `stack` move on a real spring: a damped harmonic oscillator, solved in closed form,
+set by its response (the time of one swing) and its damping fraction as in SwiftUI. A letter
+falls until its spring rests; stacked lines move up on one that keeps its momentum when the next
+line comes, so a line arriving mid-move never jerks. `slide` and the bold pulse keep their bounce
+curve.
 
 `move` and `stack` lay the card out once more to find where the words are. `move` matches words
 by their text, each to the first unused one of the scene before; the glide takes a beat and a

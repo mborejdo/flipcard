@@ -8,6 +8,7 @@ use std::str::FromStr;
 
 use serde::Deserialize;
 
+use super::spring::DROP;
 use super::{Curve, Look};
 use crate::format::ParseNameError;
 
@@ -38,7 +39,8 @@ pub enum Preset {
     Stack,
     /// Word by word, the letters hopping up and back in a ripple as they fade in.
     Wave,
-    /// Word by word, the letters falling into place one after the other, landing on a spring.
+    /// Word by word, the letters falling into place one after the other, landing on a spring
+    /// that bounces once.
     Drop,
     /// Word by word, every letter a scramble of its kind, settling from the left.
     Decode,
@@ -121,7 +123,7 @@ impl Preset {
             Self::Drop => (0..n)
                 .map(|i| Look {
                     o: Curve::Linear.at(3.0 * q(i)),
-                    y: -0.9 * (1.0 - Curve::Spring.at(q(i))),
+                    y: -0.9 * (1.0 - DROP.ease(q(i))),
                     ..rest
                 })
                 .collect(),
@@ -153,7 +155,7 @@ impl Preset {
             },
             Self::Slide => Look {
                 o: ease,
-                x: -0.6 * (1.0 - Curve::Spring.at(p)),
+                x: -0.6 * (1.0 - Curve::Bounce.at(p)),
                 ..rest
             },
             // a stacked line fades in; the timeline moves it and the lines before up
@@ -178,9 +180,11 @@ impl Preset {
     }
 
     /// A rippled preset's letter: the half-beats each takes and from one's start to the next's.
-    const fn ripple(self) -> Option<(f64, f64)> {
+    fn ripple(self) -> Option<(f64, f64)> {
         match self {
-            Self::Wave | Self::Drop => Some((3.0, 0.5)),
+            Self::Wave => Some((3.0, 0.5)),
+            // a letter falls till its spring rests
+            Self::Drop => Some((DROP.settle(1.0, 0.0), 0.5)),
             Self::Decode => Some((2.0, 0.6)),
             _ => None,
         }

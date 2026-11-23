@@ -8,12 +8,14 @@
 //!
 //! The kinetic presets know where the words are ([`Timeline::arrange`]): `move` glides the words
 //! the card before has too from there first, then the others come in; `stack` brings line after
-//! line, each read at the pace, the lines in so far moving up by the room the new one takes.
+//! line, each read at the pace, the lines in so far moving up by the room the new one takes, on a
+//! spring that carries its momentum into the next line's move.
 
 use serde_json::json;
 
 use super::look::shape;
 use super::preset::ENTER;
+use super::spring::STACK;
 use super::{Curve, Look, Preset, Spot, count};
 use crate::script::Word;
 
@@ -292,10 +294,29 @@ impl Timeline {
         for sweep in sweeps.iter().flatten() {
             end = end.max(sweep.start + MARK);
         }
+        // stack: the lines move up till their spring rests
+        if !self.lines.is_empty() {
+            let (from, moves) = self.lift(&starts);
+            end = end.max(STACK.rests(from, &moves));
+        }
         self.starts = starts;
         self.sweeps = sweeps;
         self.end = mark.map_or(end, |m| end.max(m + LASER));
         self.mark = mark;
+    }
+
+    /// `stack`: how far the lines sit lower at first, in points (the room of the lines still to
+    /// come up), and from each line's start how far still: the moves of their spring.
+    fn lift(&self, starts: &[Option<(f64, f64)>]) -> (f64, Vec<(f64, f64)>) {
+        let rooms: Vec<(f64, f64)> = (self.lines.windows(2))
+            .filter_map(|pair| {
+                let ((_, above), (first, bottom)) = (pair[0], pair[1]);
+                Some(((*starts.get(first)?)?.0, bottom - above))
+            })
+            .collect();
+        let after = |k: usize| rooms[k..].iter().map(|r| r.1).sum::<f64>();
+        let moves = (0..rooms.len()).map(|k| (rooms[k].0, after(k + 1)));
+        (after(0), moves.collect())
     }
 
     /// When each marked word's mark draws: a run of words marked alike on one line draws as one
@@ -368,14 +389,14 @@ impl Timeline {
         let p =
             |start: Option<f64>, len: f64| start.map_or(1.0, |s| ((now - s) / len).clamp(0.0, 1.0));
         let draw = Curve::Ease.at(p(self.mark, BAR));
-        // stack: the lines in so far sit lower by the room of the lines still coming up
-        let sink: f64 = (self.lines.windows(2))
-            .map(|pair| {
-                let ((_, above), (first, bottom)) = (pair[0], pair[1]);
-                let start = self.starts[first].map(|(s, _)| s);
-                (bottom - above) * (1.0 - Curve::Ease.at(p(start, ENTER)))
-            })
-            .sum();
+        // stack: the lines in so far sit lower by the room of the lines still coming up, moving
+        // up on a spring that keeps its momentum as the next line comes
+        let sink = if self.lines.is_empty() || now >= self.end {
+            0.0
+        } else {
+            let (from, moves) = self.lift(&self.starts);
+            STACK.follow(from, &moves, now).0
+        };
         let (mut values, mut bars) = (Vec::new(), Vec::new());
         let mut caret = None;
         let looks: Vec<_> = self
@@ -436,8 +457,8 @@ impl Timeline {
                 if run.bold && !bold(i.checked_sub(1)) && !bold(Some(i + 1)) {
                     // up on a spring over half a beat, back on one over the other half
                     let (up, back) = (
-                        Curve::Spring.at(2.0 * after),
-                        Curve::Spring.at(2.0f64.mul_add(after, -1.0)),
+                        Curve::Bounce.at(2.0 * after),
+                        Curve::Bounce.at(2.0f64.mul_add(after, -1.0)),
                     );
                     look.s *= 0.12f64.mul_add(up - back, 1.0);
                 }
@@ -868,9 +889,17 @@ mod tests {
             let state: serde_json::Value = serde_json::from_str(&timeline.state(t)).unwrap();
             state["w"][i]["y"].as_f64().unwrap_or(0.0)
         };
-        // the first line sits a line (12 pt) lower till the second comes up
-        assert_eq!((y(0.0, 0), y(1.2, 0), y(2.0, 0)), (1.2, 1.2, 0.0));
-        assert_eq!((y(1.2, 2), timeline.length()), (1.2, (8.0 + 8.0) * 0.2));
+        // the first line sits a line (12 pt) lower till the second comes up, then moves up on
+        // its spring, a hair past its place, and rests there by the end
+        assert_eq!((y(0.0, 0), y(1.2, 0), y(1.2, 2)), (1.2, 1.2, 1.2));
+        assert!(y(1.4, 0) < 1.2 && y(1.4, 0) > 0.0);
+        let past = (0..40)
+            .map(|k| y(f64::from(k).mul_add(0.05, 1.2), 0))
+            .fold(1.0, f64::min);
+        assert!(past < 0.0 && past > -0.02, "{past}");
+        let rest = STACK.rests(12.0, &[(6.0, 0.0)]);
+        assert!((timeline.end - rest).abs() < 1e-9 && rest > 8.0);
+        assert_eq!(y(timeline.entrances(), 0), 0.0);
     }
 
     #[test]
