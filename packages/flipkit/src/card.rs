@@ -732,10 +732,7 @@ mod tests {
     #[test]
     fn motion_blur_averages_a_moving_frame_and_leaves_a_still_one() {
         let (loaded, options) = tall("# Blur\n\nwords that rise\n");
-        let blurred = Options {
-            blur: 4,
-            ..options
-        };
+        let blurred = Options { blur: 4, ..options };
         let engine = deckmark::faces::engine(&[]).unwrap();
         let mut maker = Maker::new(&loaded, &options).unwrap();
         let (pages, _) = maker.paged(&engine).unwrap();
