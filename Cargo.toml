@@ -39,9 +39,9 @@ filmstrip = { path = "packages/filmstrip", default-features = false }
 flipkit = { path = "packages/flipkit" }
 
 # The containers (filmstrip): the GIF and the MP4, pure Rust.
-png = { version = "0.17", default-features = false }
-gif = { version = "0.13", default-features = false, features = ["std"] }
-color_quant = "1"
+png = { version = "0.18", default-features = false }
+gif = { version = "0.14", default-features = false, features = ["std"] }
+color_quant = "2"
 rusty_h264-encoder = "0.17"
 rusty_h264-common = "0.17"
 mp4 = "0.14"
