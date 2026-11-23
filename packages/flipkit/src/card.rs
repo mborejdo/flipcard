@@ -643,6 +643,42 @@ mod tests {
     }
 
     #[test]
+    fn the_caret_and_the_marks_never_move_a_typed_word() {
+        // a word typed to its end with the caret after it, marks sweeping under and behind it:
+        // every word's box stays where it is at rest, the same size, on every frame
+        for (format, line) in [
+            (Format::Square, "Solved. ==Pending review==."),
+            (Format::Square, "Designs a __CPU__."),
+            (Format::Square, "Biggest IPO ever."),
+            (Format::Tall, "Tests: __deleted__."),
+            (Format::Wide, "Proves ==Riemann==."),
+        ] {
+            let source = format!("# Also AI\n\n:::{{scene}} type\n:::\n\n{line}\n");
+            let loaded = Config::default().parse(&source, "test", Path::new("."));
+            let flags = Settings {
+                format: Some(format),
+                width: Some(540),
+                fps: Some(15),
+                pace: Some(300.0),
+                ..Settings::default()
+            };
+            let options = Options::resolve(flags, &loaded.source, &Config::default()).unwrap();
+            let engine = deckmark::faces::engine(&[]).unwrap();
+            let mut maker = Maker::new(&loaded, &options).unwrap();
+            let (pages, _) = maker.paged(&engine).unwrap();
+            let mut card = maker.card(&pages[0], 0).unwrap();
+            let rest = card.spots(&engine).unwrap();
+            let states = std::mem::take(&mut card.states);
+            assert!(states.iter().any(|s| s.contains(r#""c":"#)), "{line}");
+            card.frames = 1;
+            for state in &states {
+                card.states = vec![state.clone()];
+                assert_eq!(card.spots(&engine).unwrap(), rest, "{line}: {state}");
+            }
+        }
+    }
+
+    #[test]
     fn a_tall_slide_that_does_not_fit_pages_on_with_its_heading() {
         let items = (1..=30).map(|i| format!("- point number {i}"));
         let (loaded, options) = tall(&format!(

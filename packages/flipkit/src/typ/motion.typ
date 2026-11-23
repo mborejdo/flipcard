@@ -42,8 +42,11 @@
   let paint = if dot or fill >= 1 { alpha(ink) } else if fill <= 0 { motion-muted } else {
     gradient.linear((ink, 0%), (ink, fill * 100%), (motion-muted, fill * 100%), (motion-muted, 100%))
   }
+  // the caret is placed after the typed letters, not laid out with them: inline, it could break
+  // onto a line of its own in the word's box, the box growing a line taller
   let caret = if not dot and motion.at("c", default: none) == w.id {
-    box(width: 0pt, place(left + bottom, dx: 0.04em, dy: 0.15em, rect(width: 0.07em, height: 0.95em, fill: motion-accent)))
+    let at = measure(text(body) + text(tail)).width
+    place(left + bottom, dx: at + 0.04em, dy: 0.15em, rect(width: 0.07em, height: 0.95em, fill: motion-accent))
   }
   let line-at(dy, stroke) = place(left + bottom, dy: dy, line(length: marked * draw, stroke: stroke))
   // the marks move with the glyphs (a stacked line still rising); only the glyphs scale
@@ -59,7 +62,8 @@
       }
       if draw > 0 and mark("underline") { line-at(0.2em, 0.09em + alpha(motion-accent)) }
       let plain = if fill < 1 { paint } else { alpha(text.fill) }
-      scale(s * 100%, box(text(fill: paint, body) + text(fill: plain, tail) + caret))
+      scale(s * 100%, box(text(fill: paint, body) + text(fill: plain, tail)))
+      caret
       if draw > 0 and mark("strike") { line-at(-0.3em, 0.08em + alpha(motion-muted)) }
     }))
   }))
