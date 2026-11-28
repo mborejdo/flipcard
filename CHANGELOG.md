@@ -2,6 +2,14 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow semver.
 
+## 0.5.1 - 2026-11-28
+
+### Fixed
+
+- A bold word's trailing punctuation (the full stop, a closing quote or bracket) takes the word's
+  colour, while it fills and at rest; it stayed in the plain ink. The tail still stays out of
+  the line marks (`==`, `__`, `~~`).
+
 ## 0.5.0 - 2026-11-23
 
 ### Added
