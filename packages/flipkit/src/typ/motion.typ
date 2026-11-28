@@ -65,7 +65,9 @@
     gradient.linear((ink, 0%), (ink, fill * 100%), (motion-muted, fill * 100%), (motion-muted, 100%))
   }
   let line-at(dy, stroke) = place(left + bottom, dy: dy, line(length: marked * draw, stroke: stroke))
-  let plain = if fill < 1 { paint } else { alpha(text.fill) }
+  // the tail is unmarked, but `**` is a colour, not a mark: a bold word's tail takes its ink
+  let bold = mark("bold") and not mark("strike")
+  let plain = if fill < 1 or bold { paint } else { alpha(text.fill) }
   let letters = if letters == none and track != 0 { () } else { letters }
   let glyphs-at-rest = if letters == none or glyphs.len() == 0 {
     box(text(fill: paint, body) + text(fill: plain, tail))
@@ -86,7 +88,7 @@
             (at + (measure(g).width - measure(by).width) / 2, by)
           } else { (at, g) }
           let lh = l.at("hue", default: 0)
-          let fill = if i < body-letters { if fill >= 1 { alpha(toward(ink, lh), o: lo) } else { paint } } else { alpha(toward(text.fill, lh), o: lo) }
+          let fill = if i < body-letters or bold { if fill >= 1 { alpha(toward(ink, lh), o: lo) } else { paint } } else { alpha(toward(text.fill, lh), o: lo) }
           let drawn = scale(l.at("s", default: 1) * 100%, text(fill: fill, g))
           let lr = l.at("rot", default: 0)
           place(left + bottom, dx: at, move(dx: l.at("x", default: 0) * 1em, dy: l.at("y", default: 0) * 1em, if lr == 0 { drawn } else { rotate(lr * 1deg, drawn) }))
